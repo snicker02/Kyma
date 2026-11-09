@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kyma — Amazing Surf Fractal Explorer</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app" class="app">
+
+    <!-- ── Left dock: the formula ───────────────────────────────────────── -->
+    <aside id="dockLeft" class="dock dock-left">
+      <div class="dock-head">
+        <h1 title="κῦμα — Greek for “wave”">Kyma<span class="ver" id="ver"></span></h1>
+        <button class="dock-toggle" data-dock="left" title="Hide formula panel ( [ )">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+      </div>
+      <div class="dock-label">Formula</div>
+      <div class="dock-body" id="groupsLeft"></div>
+      <div class="dock-foot" id="footLeft"></div>
+    </aside>
+
+    <!-- ── Centre: the viewer ───────────────────────────────────────────── -->
+    <main id="stage" class="stage">
+      <canvas id="view"></canvas>
+      <button class="dock-tab dock-tab-left" data-dock="left" title="Show formula panel ( [ )">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+      <button class="dock-tab dock-tab-right" data-dock="right" title="Show scene panel ( ] )">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+      </button>
+      <div class="overlay-chip hud" id="hud">—</div>
+      <div class="overlay-chip attribution-box">Amazing Surf formulas by <strong>Kali</strong> &amp; <strong>DarkBeam</strong> · via <strong>Mandelbulber</strong></div>
+      <div class="overlay-chip controls-hint">
+        <strong>Drag</strong> orbit &middot; <strong>R-drag</strong> dolly &middot; <strong>M-drag</strong> pan &middot;
+        <strong>WASD Q/E</strong> fly &middot; <strong>Dbl-click</strong> focus &middot; <strong>[ ]</strong> panels &middot; <strong>H</strong> hide UI
+      </div>
+      <div id="toast" class="toast"></div>
+    </main>
+
+    <!-- ── Right dock: scene & output ───────────────────────────────────── -->
+    <aside id="dockRight" class="dock dock-right">
+      <div class="dock-head">
+        <button class="dock-toggle" data-dock="right" title="Hide scene panel ( ] )">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+        <div class="save-controls" id="ui">
+          <div class="row">
+            <span id="recIndicator" class="recording-dot"></span>
+            <button id="recVideo" class="pill pill-red" title="Record video — settings in Video &amp; Frames Export">Record Video</button>
+          </div>
+          <div class="row">
+            <select id="saveRes" class="res-select">
+              <option value="viewport">Viewport</option>
+              <option value="1080p">HD 1080p</option>
+              <option value="1440p">QHD 1440p</option>
+              <option value="4k">4K Ultra HD</option>
+              <option value="8k">8K</option>
+            </select>
+            <button id="saveImg" class="pill pill-indigo" title="Tiled multi-sample render to PNG">Save Image</button>
+          </div>
+        </div>
+      </div>
+      <div class="dock-label">Scene &amp; Output</div>
+      <div class="dock-body" id="groupsRight"></div>
+      <div class="dock-foot" id="footRight"></div>
+      <div class="app-credit">Created with help from Claude AI</div>
+    </aside>
+  </div>
+
+  <div id="progress" class="progress hidden">
+    <div class="progress-label" id="progressLabel">Rendering…</div>
+    <div class="progress-bar"><div id="progressFill"></div></div>
+    <button id="progressCancel" class="action-btn sm danger">Cancel</button>
+  </div>
+
+  <dialog id="discDialog">
+    <h2 id="discTitle">Discovery String</h2>
+    <textarea id="discText" spellcheck="false" placeholder="Paste a SURF2: discovery string or project JSON"></textarea>
+    <div class="dlg-buttons">
+      <button class="action-btn sm" id="discClose">Close</button>
+      <button class="action-btn sm primary" id="discLoad">Load</button>
+    </div>
+  </dialog>
+
+  <input type="file" id="projectFile" accept=".json,application/json" hidden>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>

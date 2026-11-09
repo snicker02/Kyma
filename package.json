@@ -1,0 +1,11 @@
+{
+  "name": "kyma",
+  "version": "2.6.0",
+  "private": true,
+  "type": "module",
+  "description": "Kyma — WebGL1 progressive raymarcher for Kali's Amazing Surf fractal family (Mandelbulber surf formulas). No dependencies.",
+  "scripts": {
+    "test": "node tests/run.mjs",
+    "serve": "python3 -m http.server 8000"
+  }
+}
