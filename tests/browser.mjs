@@ -271,7 +271,8 @@ ok(/\.png$/.test(png.suggestedFilename()), `image downloaded: ${png.suggestedFil
   await page.waitForTimeout(2000);
   const during = await page.evaluate(() => [canvas => [canvas.width, canvas.height]][0](document.getElementById('view')));
   await page.evaluate(() => document.getElementById('recVideo').click());
-  vid = await dlv; vp = `${OUT}/rt-${vid.suggestedFilename()}`; await vid.saveAs(vp);
+  vid = await dlv.catch(async e => { throw new Error(`real-time 720p: no download — toast "${await page.textContent('#toast')}" (${e.message.split('\n')[0]})`); });
+  vp = `${OUT}/rt-${vid.suggestedFilename()}`; await vid.saveAs(vp);
   const dims = execFileSync('ffprobe', ['-v','error','-select_streams','v:0','-show_entries','stream=width,height','-of','csv=p=0', vp]).toString().trim();
   await page.waitForTimeout(500);
   const back = await page.evaluate(() => { const c = document.getElementById('view'); return c.width === c.clientWidth && c.height === c.clientHeight && !c.style.objectFit; });

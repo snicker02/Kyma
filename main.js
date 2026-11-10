@@ -17,7 +17,7 @@ import { BIOMES, evolve, rebirth, encodeDiscovery, decodeDiscovery, makeProject,
 import { wrapPi, clamp } from './engine/vec.js';
 import { Panel } from './ui/panel.js';
 
-export const VERSION = '2.6.0';
+export const VERSION = '2.7.0';
 
 const $ = id => document.getElementById(id);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
@@ -184,13 +184,26 @@ resetViewBtn.addEventListener('click', () => {
 });
 panel.group('view').append(resetViewBtn);
 
-const biomeGrid = el('div', 'grid grid-3');
-for (const key in BIOMES) {
-  const b = el('button', 'biome-btn', BIOMES[key].label);
-  b.addEventListener('click', () => { pushHistory(); state.setMany(BIOMES[key].v); toast('Biome Applied'); });
-  biomeGrid.append(b);
+// Presets dropdown, grouped by engine. Picking one applies it (undoable); the
+// list then shows its name until you pick another.
+const presetSel = el('select', 'preset-select');
+presetSel.id = 'presetSelect';
+presetSel.append(Object.assign(el('option', '', `Choose a preset (${Object.keys(BIOMES).length})…`), { value: '', disabled: true, selected: true }));
+const presetGroups = [['Classic engine', k => !BIOMES[k].v.surfVariant], ['Mandelbulber Amazing Surf', k => !!BIOMES[k].v.surfVariant]];
+for (const [label, test] of presetGroups) {
+  const og = el('optgroup');
+  og.label = label;
+  for (const key in BIOMES) if (test(key)) og.append(Object.assign(el('option', '', BIOMES[key].label), { value: key }));
+  if (og.children.length) presetSel.append(og);
 }
-panel.group('presets').append(biomeGrid);
+presetSel.addEventListener('change', () => {
+  const b = BIOMES[presetSel.value];
+  if (!b) return;
+  pushHistory();
+  state.setMany(b.v);
+  toast(`Preset: ${b.label}`);
+});
+panel.group('presets').append(presetSel);
 
 // ── Surf variant ────────────────────────────────────────────────────────────
 const variantDesc = el('div', 'fold-desc');

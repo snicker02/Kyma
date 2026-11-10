@@ -1,4 +1,4 @@
-# Kyma v2.6.0
+# Kyma v2.7.0
 
 **Kyma** (κῦμα, Greek for "wave") is a progressive WebGL1 raymarcher for Kali's **Amazing Surf** fractal family. It includes all nine of Mandelbulber's surf formulas, path tracing, volumetric glow and environment lighting. It has no dependencies and no build step. It was formerly *Amazing Surf*; old project files, discovery strings (`SURF2:`) and saved panel layouts still load.
 
@@ -17,7 +17,7 @@ The UI is docked in three columns:
 
 | Left dock — **Formula** | Centre | Right dock — **Scene & Output** |
 |---|---|---|
-| Biome presets | Viewer | Save image / record video |
+| Presets (dropdown) | Viewer | Save image / record video |
 | Geometric core | | View & navigation |
 | Fold types (A, hybrid B, polar sectors, axis swap) | | Color & lens (palette, exposure, DOF) |
 | Folding & space (limits, Julia, rotations) | | Environment (backdrop / 360° panorama) |

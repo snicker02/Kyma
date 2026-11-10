@@ -4,6 +4,32 @@ import { PARAMS, PARAM_BY_ID, defaults, coerce, FOLD_NAMES, SURF_VARIANTS } from
 import { viewScore } from './de.js';
 
 // Partial presets — like v1, a biome only overrides what it names.
+// Full scene (Brad, Nov 2026): Mandelbulber Amazing Surf, swap-YZ, Julia, sphere
+// inversion. Every look parameter is set, so it lands the same whatever was loaded
+// before. The presets after it are full scenes too, built as variations on it.
+const CHALICE = {
+    surfVariant: 1, vStack1: 1, vStack2: 0, vStack3: 0, vStack4: 0, vStack5: 0, vFoldValue: 2, vFold2: 2,
+    vZFold: false, vSwapXY: false, vSwapYZ: true, vEvenFlipY: false, vEvenFlipZ: false, vFlip: 0,
+    vCSwizzle: 0, vMboxFold: false, vFixedR2: 1, vDEOffset: 1, vOffX: 0, vOffY: 0, vOffZ: 0, vSphX: 0,
+    vSphY: 0, vSphZ: 0, vPostX: 0, vPostY: 0, vPostZ: 0, vKleinIters: 8, vTailX: 1, vTailY: 1, vTailZ: 0,
+    vTailScale: 2, vTailOffX: 0, vTailOffY: 0, vTailOffZ: 0, vPolyOn: false, vPolyAbsY: true, scale: 2,
+    scaleVary: 0, influence: 1, minR: 0.8408964153, cylinder: false, foldType: 0, foldType2: 0,
+    hybridPeriod: 2, polarN: 6, axisOrder: 0, tgladWeight: 0, foldX: 1, foldY: 1, foldZ: 1, juliaMode: true,
+    juliaCX: 0, juliaCY: 0, juliaCZ: 0, cMult: 0, preAlpha: 0, preBeta: 0, preGamma: 0, alpha: 0, beta: 0,
+    gamma: 0, spinX: 0, spinY: 0, spinZ: 0, rotStart: 0, invEnabled: true, invMode: 0, invStrength: 1,
+    invRadius: 1.705, invDELimit: 30, invCX: 0, invCY: 0.13, invCZ: -0.55, iterations: 16, maxSteps: 256,
+    detail: 1, stepFactor: 1, maxDist: 100, missAsHit: false, debugView: 0, renderMode: 0, ptBounces: 3,
+    ptRough: 0.5, ptMetal: 0, ptSun: 2.5, ptLightSize: 0.3, ptSky: 1, ptSkyColor: '#9fb4d9', ptEmit: 0,
+    ptClamp: 20, volDensity: 20, volThick: 0.004, volGlow: 1.2, volLight: 0.5, volStepMin: 0.008,
+    volSteps: 384, rotX: -0.16, rotY: -0.4743, dist: 12.298015555784776, lens: 1, rollX: 0, rollY: 0, rollZ: 0,
+    autoRoll: false, rotSpeed: 0.5, rollAmount: 1, targetX: 0, targetY: 0, targetZ: 0, palette: 0,
+    colorShift: 0, lightColor: '#e6f2ff', bgColor: '#010103', tonemap: 0, brightness: 1.2, vignette: 0.5,
+    dofStrength: 0, focalDist: 5, envMode: 0, envIntensity: 1, envBlur: 0, envYaw: 0, envPitch: 0,
+    envReflect: 0.4, envLight: 0.5, envFog: true, lightX: 2, lightY: 4, lightZ: 3, lightRelative: false,
+    ambient: 0.2, volumetric: 1.5, fog: 0.2, stepAO: 1, aoStrength: 0, shadows: false, shadowSoft: 12,
+    pulse: false
+};
+
 export const BIOMES = {
   spire: { label: 'Alien Spire', v: { scale: 2.1, minR: 0.15, iterations: 18, tgladWeight: 0.8, cMult: 0.05, palette: 3 } },
   city: { label: 'Glass City', v: { scale: 1.8, volumetric: 4.0, brightness: 1.5, foldX: 1.2, foldY: 1.2, foldZ: 0.1, palette: 2 } },
@@ -14,6 +40,13 @@ export const BIOMES = {
   penrose: { label: 'Penrose Rosette', v: { foldType: 7, foldType2: 0, polarN: 5, palette: 5, rotX: 0, rotY: 0, dist: 9, rollX: 0, rollY: 0, rollZ: 0, targetX: 0, targetY: 0, targetZ: 0, invEnabled: false } },
   mandala: { label: 'Octo Mandala', v: { foldType: 7, foldType2: 0, polarN: 8, juliaCX: 0.3, juliaCY: 0.2, juliaCZ: 0, palette: 5, rotX: 0, rotY: 0, dist: 9, rollX: 0, rollY: 0, rollZ: 0, targetX: 0, targetY: 0, targetZ: 0, invEnabled: false } },
   bloom: { label: 'Hybrid Bloom', v: { foldType: 0, foldType2: 9, hybridPeriod: 2, foldZ: 0.8, aoStrength: 0.5, rotX: 0.5, rotY: 0.55, dist: 7, invEnabled: false } },
+  chalice: { label: 'Crimson Chalice', v: CHALICE },
+  ember: { label: 'Ash Grotto', v: { ...CHALICE, surfVariant: 2, minR: 0.8408964152537146, invRadius: 1.6, invCX: 0.2, invCY: 0.1, invCZ: -0.5, rotX: 0.35, rotY: -0.3, dist: 10, palette: 1, colorShift: 0.15, lightColor: '#ffd9b0', bgColor: '#070302', fog: 0.35 } },
+  frost: { label: 'Frost Cathedral', v: { ...CHALICE, vSwapYZ: false, minR: 0.8408964152537146, invRadius: 1.4, invCY: -0.2, invCZ: 0.4, rotX: 0, rotY: -0.5, dist: 6.5, palette: 7, colorShift: 0.6, lightColor: '#d6ecff', bgColor: '#02050a', tonemap: 1, brightness: 1, aoStrength: 0.6 } },
+  tide: { label: 'Night Geode', v: { ...CHALICE, surfVariant: 3, minR: 0.5, invRadius: 1.8, invCX: -0.3, invCY: 0.2, invCZ: -0.4, rotX: -0.6, rotY: -0.2, dist: 12, palette: 2, colorShift: 0.25, bgColor: '#01040a', fog: 0.4 } },
+  orchid: { label: 'Orchid Spiral', v: { ...CHALICE, minR: 0.8408964152537146, gamma: 0.15, spinZ: 0.12, rotX: 0.6, rotY: -0.45, dist: 12, palette: 5, colorShift: 0.1 } },
+  dust: { label: 'Stardust Veil', v: { ...CHALICE, minR: 0.8408964152537146, renderMode: 2, rotY: -0.47, dist: 12.3, palette: 5, colorShift: 0.3, bgColor: '#000000' } },
+  m3d: { label: 'Copper Canopy', v: { ...CHALICE, surfVariant: 7, scale: 1.5, minR: 0.5, invRadius: 1.65, invCY: 0.2, invCZ: -0.5, rotX: 0.4, rotY: -0.4, dist: 11, palette: 1, colorShift: 0.55 } },
 };
 
 const r = (a, b) => a + Math.random() * (b - a);
