@@ -187,7 +187,7 @@ section('fold types');
     const combos = [];
     for (let a = 0; a < FOLD_GLSL.length; a++) for (let b = -1; b < FOLD_GLSL.length; b++) combos.push([a, b, 0]);
     for (const mode of [1, 2]) for (let a = 0; a < FOLD_GLSL.length; a++) combos.push([a, -1, mode], [a, (a + 3) % FOLD_GLSL.length, mode]);
-    for (let variant = 1; variant < 10; variant++) for (const mode of [0, 1, 2]) {
+    for (let variant = 1; variant < 11; variant++) for (const mode of [0, 1, 2]) {
       const stack = [1 + (variant % 6), (variant + mode) % 7, (variant * 3) % 7, mode * 2, 6 - mode].map(x => Math.min(6, x));
       combos.push([0, -1, mode, variant, stack]);
     }
@@ -390,6 +390,91 @@ section('discovery');
 }
 
 // ── Evolve / rebirth ────────────────────────────────────────────────────────
+section('amazing ifs vs Mandelbulber reference');
+{
+  // Line-by-line port of mandelbulber2 fractal_amazing_ifs.cpp FormulaCode (sphere
+  // inversion off, aux colour ignored), written against Mandelbulber's own names.
+  // Final distance as compute_fractal.cpp: linear = r / aux.DE, custom = aux.dist.
+  const { fractalRotation } = await import('../engine/vec.js');
+  const { PARAMS } = await import('../engine/params.js');
+  const { VARIANT_DEFAULTS } = await import('../engine/presets.js');
+  const defs = Object.fromEntries(PARAMS.map(p => [p.id, p.def]));
+  const fabs = Math.abs, sign = Math.sign;
+  function mbAmazingIfs(c, f, iters) {
+    let z = [...c];
+    const aux = { DE: 1, actualScaleA: 0, dist: 1000, i: 0 };
+    const rot = fractalRotation(f.alpha, f.beta, f.gamma);
+    const R = v => [rot[0]*v[0]+rot[1]*v[1]+rot[2]*v[2], rot[3]*v[0]+rot[4]*v[1]+rot[5]*v[2], rot[6]*v[0]+rot[7]*v[1]+rot[8]*v[2]];
+    for (aux.i = 0; aux.i < iters; aux.i++) {
+      if (f.functionEnabledAx) z[0] = fabs(z[0]);
+      if (f.functionEnabledAy) z[1] = fabs(z[1]);
+      if (f.functionEnabledAz) z[2] = fabs(z[2]);
+      z = z.map((x, k) => x + f.offsetA000[k]);
+      if (f.functionEnabledP) {
+        z[1] = fabs(z[1]);
+        let psi = Math.PI / f.int6;
+        psi = fabs(((Math.atan2(z[1], z[0]) + psi) % (2 * psi) + 2 * psi) % (2 * psi) - psi);
+        const len = Math.sqrt(z[0] * z[0] + z[1] * z[1]);
+        z[0] = Math.cos(psi) * len; z[1] = Math.sin(psi) * len;
+      }
+      const a = f.additionConstant0555;
+      z[0] = fabs(z[0] + a[0]) - fabs(z[0] - a[0]) - z[0];
+      z[1] = fabs(z[1] + a[1]) - fabs(z[1] - a[1]) - z[1];
+      if (f.functionEnabledCz) z[2] = fabs(z[2] + a[2]) - fabs(z[2] - a[2]) - z[2];
+      for (let k = 0; k < 3; k++) {
+        if (!f.functionEnabledB[k]) continue;
+        if (!f.functionEnabledSign[k]) z[k] = fabs(z[k]); else z[k] = sign(z[k]) * fabs(z[k]);
+        z[k] -= f.additionConstantP000[k];
+      }
+      z = z.map((x, k) => x + f.additionConstantA000[k]);
+      const rr = z[0] * z[0] + z[1] * z[1] + z[2] * z[2];
+      const MinRR = f.minR2p25;
+      const dividend = rr < MinRR ? MinRR : Math.min(rr, 1);
+      const useScale = (aux.actualScaleA + f.scale2) / dividend;
+      z = z.map(x => x * useScale);
+      aux.DE = aux.DE * fabs(useScale) + f.offset0;
+      if (f.functionEnabledK) aux.actualScaleA -= f.scaleVary0 * (fabs(aux.actualScaleA) - 1);
+      z = R(z);
+      aux.DE0 = Math.hypot(...z) / aux.DE;
+      if (aux.i >= f.startIterationsC) aux.dist = Math.min(aux.dist, aux.DE0);
+      if (f.cpixel) z = z.map((x, k) => x + f.c[k]);
+      if (z[0] * z[0] + z[1] * z[1] + z[2] * z[2] > 10000) break;
+    }
+    return { linear: Math.hypot(...z) / aux.DE, custom: aux.dist };
+  }
+  let seed = 4242; const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const r = (a, b) => a + (b - a) * rnd();
+  let worst = 0, worstMin = 0, n = 0;
+  for (let t = 0; t < 60; t++) {
+    const modes = [0, 1, 2].map(() => Math.floor(r(0, 3)));
+    const v = { ...defs, ...VARIANT_DEFAULTS[10], surfVariant: 10, iterations: 12,
+      scale: r(1.5, 2.6), minR: r(0.2, 0.8), foldX: r(0.3, 1.2), foldY: r(0.3, 1.2), foldZ: r(0.3, 1.2), vZFold: rnd() < 0.5,
+      vPreAbsX: rnd() < 0.3, vPreAbsY: rnd() < 0.3, vPreAbsZ: rnd() < 0.3, vIfsX: modes[0], vIfsY: modes[1], vIfsZ: modes[2],
+      vIfsOffX: r(-1, 1), vIfsOffY: r(-1, 1), vIfsOffZ: r(-1, 1), vIfsAddX: r(-0.5, 0.5), vIfsAddY: r(-0.5, 0.5), vIfsAddZ: r(-0.5, 0.5),
+      vOffX: r(-0.3, 0.3), vOffY: r(-0.3, 0.3), vOffZ: r(-0.3, 0.3), vPolyOn: rnd() < 0.4, polarN: 3 + Math.floor(r(0, 6)),
+      vDEOffset: r(0, 1), scaleVary: rnd() < 0.5 ? 0 : r(-0.3, 0.3), alpha: r(-0.5, 0.5), beta: r(-0.5, 0.5), gamma: r(-0.5, 0.5),
+      vAddC: rnd() < 0.5, vMinDEStart: Math.floor(r(0, 5)), juliaMode: true, juliaCX: r(-0.5, 0.5), juliaCY: r(-0.5, 0.5), juliaCZ: r(-0.5, 0.5), invEnabled: false };
+    const f = {
+      functionEnabledAx: v.vPreAbsX, functionEnabledAy: v.vPreAbsY, functionEnabledAz: v.vPreAbsZ,
+      offsetA000: [v.vOffX, v.vOffY, v.vOffZ], functionEnabledP: v.vPolyOn, int6: v.polarN,
+      additionConstant0555: [v.foldX, v.foldY, v.foldZ], functionEnabledCz: v.vZFold,
+      functionEnabledB: modes.map(m => m > 0), functionEnabledSign: modes.map(m => m === 2),
+      additionConstantP000: [v.vIfsOffX, v.vIfsOffY, v.vIfsOffZ], additionConstantA000: [v.vIfsAddX, v.vIfsAddY, v.vIfsAddZ],
+      minR2p25: v.minR * v.minR, scale2: v.scale, offset0: v.vDEOffset, functionEnabledK: v.scaleVary !== 0, scaleVary0: v.scaleVary,
+      alpha: v.alpha, beta: v.beta, gamma: v.gamma, startIterationsC: v.vMinDEStart, cpixel: v.vAddC, c: [v.juliaCX, v.juliaCY, v.juliaCZ] };
+    for (let q = 0; q < 8; q++) {
+      const p = [r(-2, 2), r(-2, 2), r(-2, 2)];
+      const ref = mbAmazingIfs(p, f, v.iterations);
+      const lin = makeDE({ ...v, vMinDE: false })(p).d, mn = makeDE({ ...v, vMinDE: true })(p).d;
+      worst = Math.max(worst, Math.abs(lin - 0.5 * ref.linear) / Math.max(1e-9, 0.5 * ref.linear));
+      worstMin = Math.max(worstMin, Math.abs(mn - 0.5 * ref.custom) / Math.max(1e-9, 0.5 * ref.custom));
+      n++;
+    }
+  }
+  ok(worst < 1e-7, `Amazing IFS linear DE matches the Mandelbulber port at ${n} points (worst rel ${worst.toExponential(1)})`);
+  ok(worstMin < 1e-7, `Amazing IFS smooth (min) DE matches aux.dist (worst rel ${worstMin.toExponential(1)})`);
+}
+
 section('evolve / rebirth');
 {
   for (let i = 0; i < 200; i++) {

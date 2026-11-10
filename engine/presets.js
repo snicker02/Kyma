@@ -2,6 +2,7 @@
 
 import { PARAMS, PARAM_BY_ID, defaults, coerce, FOLD_NAMES, SURF_VARIANTS } from './params.js';
 import { viewScore } from './de.js';
+import { CUSTOM_GRADIENT, GRADIENTS } from './gradients.js';
 
 // Partial presets — like v1, a biome only overrides what it names.
 // Full scene (Brad, Nov 2026): Mandelbulber Amazing Surf, swap-YZ, Julia, sphere
@@ -30,6 +31,7 @@ const CHALICE = {
     pulse: false
 };
 
+
 export const BIOMES = {
   spire: { label: 'Alien Spire', v: { scale: 2.1, minR: 0.15, iterations: 18, tgladWeight: 0.8, cMult: 0.05, palette: 3 } },
   city: { label: 'Glass City', v: { scale: 1.8, volumetric: 4.0, brightness: 1.5, foldX: 1.2, foldY: 1.2, foldZ: 0.1, palette: 2 } },
@@ -48,6 +50,15 @@ export const BIOMES = {
   dust: { label: 'Stardust Veil', v: { ...CHALICE, minR: 0.8408964152537146, renderMode: 2, rotY: -0.47, dist: 12.3, palette: 5, colorShift: 0.3, bgColor: '#000000' } },
   m3d: { label: 'Copper Canopy', v: { ...CHALICE, surfVariant: 7, scale: 1.5, minR: 0.5, invRadius: 1.65, invCY: 0.2, invCZ: -0.5, rotX: 0.4, rotY: -0.4, dist: 11, palette: 1, colorShift: 0.55 } },
 };
+
+// Amazing IFS scenes (v2.10): striped shells and ornament from the IFS fold +
+// Fold-amounts colouring. Full scenes, so they load the same from any state.
+Object.assign(BIOMES, {
+  ifs_shells: { group: 'ifs', label: 'Striped Shells', v: { surfVariant: 10, vStack1: 1, vStack2: 0, vStack3: 0, vStack4: 0, vStack5: 0, vFoldValue: 2, vFold2: 2, vZFold: false, vSwapXY: false, vSwapYZ: true, vEvenFlipY: false, vEvenFlipZ: false, vFlip: 0, vCSwizzle: 0, vMboxFold: false, vFixedR2: 1, vDEOffset: 0, vOffX: 0, vOffY: 0, vOffZ: 0, vSphX: 0, vSphY: 0, vSphZ: 0, vPostX: 0, vPostY: 0, vPostZ: 0, vKleinIters: 8, vTailX: 1, vTailY: 1, vTailZ: 0, vTailScale: 2, vTailOffX: 0, vTailOffY: 0, vTailOffZ: 0, vPolyOn: false, vPolyAbsY: true, vPreAbsX: false, vPreAbsY: false, vPreAbsZ: false, vIfsX: 1, vIfsY: 1, vIfsZ: 1, vIfsOffX: 0.4506061554, vIfsOffY: 0.3697864532, vIfsOffZ: 0.184861359, vIfsAddX: 0, vIfsAddY: 0.0699347496, vIfsAddZ: 0, vAddC: false, vMinDE: false, vMinDEStart: 4, scale: 1.588699245, scaleVary: 0, influence: 1, minR: 0.3909022236, cylinder: false, foldType: 0, foldType2: 0, hybridPeriod: 2, polarN: 6, axisOrder: 0, tgladWeight: 0, foldX: 0.2408684731, foldY: 0.2538357854, foldZ: 0.3032530308, juliaMode: true, juliaCX: 0, juliaCY: 0, juliaCZ: 0, cMult: 0, preAlpha: 0, preBeta: 0, preGamma: 0, alpha: 0.4549626112, beta: 0.3624757528, gamma: 0.1913203001, spinX: 0, spinY: 0, spinZ: 0, rotStart: 0, invEnabled: false, invMode: 0, invStrength: 1, invRadius: 1, invDELimit: 10, invCX: 0, invCY: 0, invCZ: 0, iterations: 14, maxSteps: 256, detail: 1, stepFactor: 1, maxDist: 100, missAsHit: false, debugView: 0, renderMode: 0, ptBounces: 3, ptRough: 0.5, ptMetal: 0, ptSun: 2.5, ptLightSize: 0.3, ptSky: 1, ptSkyColor: '#9fb4d9', ptEmit: 0, ptClamp: 20, volDensity: 20, volThick: 0.004, volGlow: 1.2, volLight: 0.5, volStepMin: 0.008, volSteps: 384, rotX: -1.000309022, rotY: -0.5555355191, dist: 9, lens: 1, rollX: 0, rollY: 0, rollZ: 0, autoRoll: false, rotSpeed: 0.5, rollAmount: 1, targetX: 0, targetY: 0, targetZ: 0, palette: 28, colorShift: 0, colorSource: 3, foldColW: 1, sphColW: 1, colorIters: 3, gradRepeat: 1, gradWrap: 0, gradReverse: false, gradHue: 0, gradSat: 1, gradC1: '#0b0b2b', gradC2: '#5e2ca5', gradC3: '#e0457b', gradC4: '#ffb347', gradC5: '#fff6d5', lightColor: '#e6f2ff', bgColor: '#5f86a8', tonemap: 0, brightness: 1.3, vignette: 0.5, dofStrength: 0.15, focalDist: 8.1, envMode: 0, envIntensity: 1, envBlur: 0, envYaw: 0, envPitch: 0, envReflect: 0.4, envLight: 0.5, envFog: true, lightX: 1.5, lightY: 2.5, lightZ: 3, lightRelative: true, ambient: 0.3, volumetric: 1.5, fog: 0.05, stepAO: 1, aoStrength: 0.5, shadows: true, shadowSoft: 12, pulse: false } },
+  ifs_bowl: { group: 'ifs', label: 'Ribbon Bowl', v: { surfVariant: 10, vStack1: 1, vStack2: 0, vStack3: 0, vStack4: 0, vStack5: 0, vFoldValue: 2, vFold2: 2, vZFold: false, vSwapXY: false, vSwapYZ: true, vEvenFlipY: false, vEvenFlipZ: false, vFlip: 0, vCSwizzle: 0, vMboxFold: false, vFixedR2: 1, vDEOffset: 0, vOffX: 0, vOffY: 0, vOffZ: 0, vSphX: 0, vSphY: 0, vSphZ: 0, vPostX: 0, vPostY: 0, vPostZ: 0, vKleinIters: 8, vTailX: 1, vTailY: 1, vTailZ: 0, vTailScale: 2, vTailOffX: 0, vTailOffY: 0, vTailOffZ: 0, vPolyOn: true, vPolyAbsY: true, vPreAbsX: false, vPreAbsY: false, vPreAbsZ: false, vIfsX: 1, vIfsY: 0, vIfsZ: 1, vIfsOffX: 0.5088310242, vIfsOffY: 0.3004768372, vIfsOffZ: 0.7635133117, vIfsAddX: 0, vIfsAddY: 0, vIfsAddZ: 0, vAddC: false, vMinDE: false, vMinDEStart: 6, scale: 1.651166248, scaleVary: 0, influence: 1, minR: 0.2209088612, cylinder: false, foldType: 0, foldType2: 0, hybridPeriod: 2, polarN: 6, axisOrder: 0, tgladWeight: 0, foldX: 0.5074466705, foldY: 0.3568065643, foldZ: 0.2553943634, juliaMode: true, juliaCX: 0, juliaCY: 0, juliaCZ: 0, cMult: 0, preAlpha: 0, preBeta: 0, preGamma: 0, alpha: -0.01859498024, beta: -0.1751625538, gamma: -0.4573366642, spinX: 0, spinY: 0, spinZ: 0, rotStart: 0, invEnabled: false, invMode: 0, invStrength: 1, invRadius: 1, invDELimit: 10, invCX: 0, invCY: 0, invCZ: 0, iterations: 14, maxSteps: 256, detail: 1, stepFactor: 1, maxDist: 100, missAsHit: false, debugView: 0, renderMode: 0, ptBounces: 3, ptRough: 0.5, ptMetal: 0, ptSun: 2.5, ptLightSize: 0.3, ptSky: 1, ptSkyColor: '#9fb4d9', ptEmit: 0, ptClamp: 20, volDensity: 20, volThick: 0.004, volGlow: 1.2, volLight: 0.5, volStepMin: 0.008, volSteps: 384, rotX: -0.2635883455, rotY: -0.4560403705, dist: 16.5, lens: 1, rollX: 0, rollY: 0, rollZ: 0, autoRoll: false, rotSpeed: 0.5, rollAmount: 1, targetX: 0, targetY: 0, targetZ: 0, palette: 30, colorShift: 0, colorSource: 3, foldColW: 1, sphColW: 1, colorIters: 4, gradRepeat: 1, gradWrap: 0, gradReverse: false, gradHue: 0, gradSat: 1, gradC1: '#0b0b2b', gradC2: '#5e2ca5', gradC3: '#e0457b', gradC4: '#ffb347', gradC5: '#fff6d5', lightColor: '#e6f2ff', bgColor: '#7a8a3a', tonemap: 0, brightness: 1.3, vignette: 0.5, dofStrength: 0.15, focalDist: 14.85, envMode: 0, envIntensity: 1, envBlur: 0, envYaw: 0, envPitch: 0, envReflect: 0.4, envLight: 0.5, envFog: true, lightX: 1.5, lightY: 2.5, lightZ: 3, lightRelative: true, ambient: 0.3, volumetric: 1.5, fog: 0.05, stepAO: 1, aoStrength: 0.5, shadows: true, shadowSoft: 12, pulse: false } },
+  ifs_ring: { group: 'ifs', label: 'Ring Reliquary', v: { surfVariant: 10, vStack1: 1, vStack2: 0, vStack3: 0, vStack4: 0, vStack5: 0, vFoldValue: 2, vFold2: 2, vZFold: false, vSwapXY: false, vSwapYZ: true, vEvenFlipY: false, vEvenFlipZ: false, vFlip: 0, vCSwizzle: 0, vMboxFold: false, vFixedR2: 1, vDEOffset: 0, vOffX: 0, vOffY: 0, vOffZ: 0, vSphX: 0, vSphY: 0, vSphZ: 0, vPostX: 0, vPostY: 0, vPostZ: 0, vKleinIters: 8, vTailX: 1, vTailY: 1, vTailZ: 0, vTailScale: 2, vTailOffX: 0, vTailOffY: 0, vTailOffZ: 0, vPolyOn: true, vPolyAbsY: true, vPreAbsX: false, vPreAbsY: false, vPreAbsZ: false, vIfsX: 1, vIfsY: 0, vIfsZ: 1, vIfsOffX: 0.2186544418, vIfsOffY: 0.3502332896, vIfsOffZ: 0.496761632, vIfsAddX: 0, vIfsAddY: 0, vIfsAddZ: 0.3919864655, vAddC: false, vMinDE: true, vMinDEStart: 4, scale: 1.550363922, scaleVary: 0, influence: 1, minR: 0.342587595, cylinder: false, foldType: 0, foldType2: 0, hybridPeriod: 2, polarN: 5, axisOrder: 0, tgladWeight: 0, foldX: 0.3186204433, foldY: 0.3988933086, foldZ: 0.2122098446, juliaMode: true, juliaCX: 0, juliaCY: 0, juliaCZ: 0, cMult: 0, preAlpha: 0, preBeta: 0, preGamma: 0, alpha: 0.227340579, beta: -0.2300640345, gamma: -0.354989171, spinX: 0, spinY: 0, spinZ: 0, rotStart: 0, invEnabled: false, invMode: 0, invStrength: 1, invRadius: 1, invDELimit: 10, invCX: 0, invCY: 0, invCZ: 0, iterations: 14, maxSteps: 256, detail: 1, stepFactor: 1, maxDist: 100, missAsHit: false, debugView: 0, renderMode: 0, ptBounces: 3, ptRough: 0.5, ptMetal: 0, ptSun: 2.5, ptLightSize: 0.3, ptSky: 1, ptSkyColor: '#9fb4d9', ptEmit: 0, ptClamp: 20, volDensity: 20, volThick: 0.004, volGlow: 1.2, volLight: 0.5, volStepMin: 0.008, volSteps: 384, rotX: -0.2479092342, rotY: 0.295173955, dist: 11.2, lens: 1, rollX: 0, rollY: 0, rollZ: 0, autoRoll: false, rotSpeed: 0.5, rollAmount: 1, targetX: 0, targetY: 0, targetZ: 0, palette: 29, colorShift: 0, colorSource: 3, foldColW: 1, sphColW: 1, colorIters: 4, gradRepeat: 1, gradWrap: 0, gradReverse: false, gradHue: 0, gradSat: 1, gradC1: '#0b0b2b', gradC2: '#5e2ca5', gradC3: '#e0457b', gradC4: '#ffb347', gradC5: '#fff6d5', lightColor: '#e6f2ff', bgColor: '#0d1a2e', tonemap: 0, brightness: 1.3, vignette: 0.5, dofStrength: 0.15, focalDist: 10.08, envMode: 0, envIntensity: 1, envBlur: 0, envYaw: 0, envPitch: 0, envReflect: 0.4, envLight: 0.5, envFog: true, lightX: 1.5, lightY: 2.5, lightZ: 3, lightRelative: true, ambient: 0.3, volumetric: 1.5, fog: 0.05, stepAO: 1, aoStrength: 0.5, shadows: true, shadowSoft: 12, pulse: false } },
+});
+
 
 const r = (a, b) => a + Math.random() * (b - a);
 const ri = n => Math.floor(Math.random() * n);
@@ -81,6 +92,11 @@ export const VARIANT_DEFAULTS = {
   7: { ...MB_COMMON, scale: 1.5, minR: 0.5 },
   8: { ...MB_COMMON, scale: 1, minR: 0.01, vKleinIters: 8, vSwapYZ: true, vTailX: 1, vTailY: 1, vTailZ: 0, vTailScale: 2, vTailOffX: 0, vTailOffY: 0, vTailOffZ: 0 },
   9: { ...MB_COMMON, scale: 1, minR: 0.01, vKleinIters: 8, vTailX: 1, vTailY: 1, vTailZ: 0, vTailScale: 2, vTailOffX: 0, vTailOffY: 0, vTailOffZ: 0, vPolyOn: false, vPolyAbsY: true, polarN: 8 },
+  // Mandelbulber's Amazing IFS defaults: fold limits 0.5, min R² 0.25, scale 2,
+  // DE offset 0, no c, IFS fold off.
+  10: { ...MB_COMMON, scale: 2, minR: 0.5, foldX: 0.5, foldY: 0.5, foldZ: 0.5, vZFold: false, vDEOffset: 0,
+    vPreAbsX: false, vPreAbsY: false, vPreAbsZ: false, vIfsX: 0, vIfsY: 0, vIfsZ: 0, vIfsOffX: 0, vIfsOffY: 0, vIfsOffZ: 0,
+    vIfsAddX: 0, vIfsAddY: 0, vIfsAddZ: 0, vAddC: false, vMinDE: false, vMinDEStart: 0, vPolyOn: false, polarN: 6, vOffX: 0, vOffY: 0, vOffZ: 0 },
 };
 
 export const VARIANT_DESC = [
@@ -94,20 +110,24 @@ export const VARIANT_DESC = [
   'M3D: the Mandelbulb3D original. Default scale 1.5, no Influence, plain (unswapped) c, DE offset, optional sign flips, post offset.',
   'Klein: surf iterations (with Y/Z swap) for the first N, then a full box fold × scale tail that produces Kleinian-like limit structure. No c is added.',
   'Klein V2: Klein with an optional N-fold polyfold (Polar Sectors) at the start of each iteration; Y/Z swap applies whenever Z folding is off.',
+  'Amazing IFS: Amazing Surf Mod 4 with an IFS fold (per axis |z| − offset) after the box fold. No c by default, so it makes bounded sculptures, not sheets. Smooth DE (min over iterations) and Fold amounts colouring give the glossy striped look.',
 ];
 
 // Small mutation of 3–5 geometric params (~6% of each slider span).
 export function evolve(values, strength = 0.06) {
-  const pool = PARAMS.filter(p => p.mutate);
+  // Only parameters that currently do something, and always at least one real
+  // change (picking hidden params or rounding back to the same value used to make
+  // about 7% of clicks do nothing).
+  const pool = PARAMS.filter(p => p.mutate && isActive(p, values));
   const out = {};
   const count = 3 + ri(3);
-  for (let i = 0; i < count; i++) {
+  for (let tries = 0; Object.keys(out).length < count && tries < 40; tries++) {
     const p = pool[ri(pool.length)];
-    if (!isActive(p, values)) continue;
+    if (!p || p.id in out) continue;
     const span = p.max - p.min;
     let nv = values[p.id] + gauss() * span * strength;
-    nv = Math.max(p.min, Math.min(p.max, nv));
-    out[p.id] = coerce(p, nv);
+    nv = coerce(p, Math.max(p.min, Math.min(p.max, nv)));
+    if (nv !== values[p.id]) out[p.id] = nv;
   }
   return out;
 }
@@ -138,7 +158,7 @@ export function rebirth(current, tries = 24) {
       tgladWeight: Math.random() < 0.6 ? 0 : r(0, 1),
       cMult: Math.random() < 0.7 ? 0 : r(-0.3, 0.3),
       colorShift: Math.random(),
-      palette: ri(8),
+      palette: (i => (i >= CUSTOM_GRADIENT ? i + 1 : i))(ri(GRADIENTS.length - 1)), // any built-in (not Custom)
       foldType: ri(FOLD_NAMES.length),
       foldType2: Math.random() < 0.7 ? 0 : 1 + ri(FOLD_NAMES.length),
       hybridPeriod: 2 + ri(3),

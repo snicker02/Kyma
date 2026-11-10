@@ -1,4 +1,4 @@
-# Kyma v2.7.0
+# Kyma v2.10.0
 
 **Kyma** (κῦμα, Greek for "wave") is a progressive WebGL1 raymarcher for Kali's **Amazing Surf** fractal family. It includes all nine of Mandelbulber's surf formulas, path tracing, volumetric glow and environment lighting. It has no dependencies and no build step. It was formerly *Amazing Surf*; old project files, discovery strings (`SURF2:`) and saved panel layouts still load.
 
@@ -19,7 +19,7 @@ The UI is docked in three columns:
 |---|---|---|
 | Presets (dropdown) | Viewer | Save image / record video |
 | Geometric core | | View & navigation |
-| Fold types (A, hybrid B, polar sectors, axis swap) | | Color & lens (palette, exposure, DOF) |
+| Fold types (A, hybrid B, polar sectors, axis swap) | | Color & lens (gradient, exposure, DOF) |
 | Folding & space (limits, Julia, rotations) | | Environment (backdrop / 360° panorama) |
 | | | Atmosphere & light |
 | Spherical inversion | | Animation sequencer + offline frames |
@@ -136,6 +136,59 @@ A ray that uses every **Max Ray Step** without reaching the surface is drawn as 
 
 **Color & Lens → Tone Curve** chooses between **Legacy**, the original look, and **Filmic (ACES)**. Path tracing always uses Filmic.
 
+## Amazing IFS (variant 10)
+
+Mandelbulber's *Amazing IFS* (fractal_amazing_ifs.cpp; formula by Kali, features by DarkBeam) is Amazing Surf Mod 4 with three additions. Kyma follows its iteration order exactly:
+
+1. Optional per-axis **Pre-Fold Abs**, then the **Pre-Sphere Offset**, then an optional **Polyfold** (N sectors, Y mirrored).
+2. The box fold. X and Y always fold; Z folds with **Fold Z Axis Too**. Mandelbulber's default fold limit is 0.5.
+3. The **IFS fold**, per axis: *Mirror + shift* (z = |z| − offset), *Shift only* (z − offset) or *Off*. This is what turns the surf into clustered, symmetric sculptures.
+4. The **Post-IFS Offset**, then the sphere fold with additive scale (Scale, Min R, Scale Vary, DE Offset), then rotation.
+5. **Add c** is off by default, as in Mandelbulber, so the formula builds one bounded object rather than an endless sheet. Turn it on to add the pixel or Julia seed.
+
+**Smooth DE (min over iterations)** is Mandelbulber's custom DE (`aux.dist`): the smallest |z|/DE seen from **Smooth DE From Iteration** onwards. Starting at 2–4 lets the large early surfaces win, which gives solid, glossy shells instead of fine lace. Starting at 0 gives the plain bounding box.
+
+Its built-in sphere inversion is Kyma's **Sphere Inversion** (start of iteration). The test suite includes a line-by-line JavaScript port of the Mandelbulber C++ and checks Kyma's distance estimate against it at 480 random points, both linear and smooth DE, to 1e-7. The GPU shader matches the CPU version within 1%.
+
+**Color Source → Fold amounts (continuous)** is Mandelbulber's extended aux colour for the surf family:
+
+- each box-fold reflection adds **Box-Fold Color** × (|z| − 1);
+- each sphere-fold pass outside Min R adds **Sphere-Fold Color** × (r² − Min R²)/100.
+
+Because the sum varies smoothly over a surface, a banded gradient (Circus Stripes, Awning Teal …) wraps the shells in stripes. Keep **Color Iterations** low (3–6) so the stripes follow the big shapes.
+
+Presets: **Striped Shells**, **Ribbon Bowl** and **Ring Reliquary** in the *Amazing IFS* section of the dropdown.
+
+## Gradients
+
+The surface colour comes from a gradient indexed by the orbit trap. **Gradient** has 27 built-ins plus **Custom (5 colors)**:
+
+- **Original eight** (Cosmic Neon … Ice & Fire): the v1 cosine palettes, rebuilt exactly (within 1/255), so old projects and discovery strings look the same.
+- **Perceptual maps**: Inferno, Magma, Viridis, Twilight.
+- **Warm**: Sunset Strip, Lava, Blood Moon, Copper.
+- **Cool / natural**: Ocean Depths, Aurora, Emerald, Rust & Teal.
+- **Neutral**: Chrome, Bone, Ink Wash.
+- **Bright**: Spectrum, Vaporwave, Candy, Pastel Dream.
+
+- **Stripes & ornament** (v2.9): Circus Stripes, Awning Teal, Lime Ribbon, Candy Cane, Orange Sash (hard-edged bands), Gilded Filigree, Moss & Gold, Shell Pink.
+
+**Color Source** chooses what indexes the gradient:
+
+- *Orbit trap* (default): the closest the orbit comes to the origin, which gives smooth colour flow.
+- *Fold count (stripes)*: each box-fold that actually reflects a component adds **Box-Fold Color**, and each sphere-fold that rescales adds **Sphere-Fold Color** (half for the middle zone). This is the idea behind Mandelbulber's extended "aux colour". The count is constant over each region, so a banded gradient gives crisp stripes and segments. **Color Iterations** counts only the first N iterations: 2–5 gives broad regions, and more gives finer, busier detail.
+- *Trap + folds*: both added together.
+- *Fold amounts (continuous)*: how far each fold reflected, not just whether it did (see Amazing IFS). This gives smooth stripes.
+
+Multi-stop gradients are blended in OKLab, so transitions keep even brightness instead of going muddy midway. Controls:
+
+- **Gradient Offset**: slides the colours along the surface (was Color Phase).
+- **Gradient Repeat**: how many times the gradient cycles across the same structure.
+- **Wrap**: *Repeat* jumps from the last colour back to the first; *Mirror* runs there and back with no seam; *Auto* mirrors gradients that don't loop (Inferno, Lava…) and repeats the ones that do.
+- **Reverse**, **Gradient Hue** (a rotation around the grey axis, so brightness holds) and **Gradient Saturation**.
+- **Custom**: five colour stops, looping.
+
+The strip under the dropdown shows the actual gradient after every modifier; click it to step to the next one. Offset, Repeat, Hue, Saturation and the custom stops all animate in the sequencer.
+
 ## Environment
 
 The **Environment** group sets the background in one of three modes: a **Solid Color**, a **Backdrop** (an image cover-fitted to the view) or a **Panorama** (an equirectangular 360° sky with yaw and pitch).
@@ -166,6 +219,7 @@ engine/
   zip.js            store-only ZIP writer for frame sequences
   video.js          WebCodecs encoder wrapper: codec/level selection, bitrate presets
   mux.js            dependency-free MP4 (H.264) and WebM (VP8/VP9) muxers
+  gradients.js      gradient library, OKLab blending, modifiers → 256-texel LUT
   environment.js    procedural sky presets, image → power-of-two env texture
   vec.js            vector/matrix helpers
 ui/panel.js         builds both docks from the schema

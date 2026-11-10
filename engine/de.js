@@ -49,6 +49,9 @@ export function makeDE(v, scaleOverride) {
   const stack = [v.vStack1, v.vStack2, v.vStack3, v.vStack4, v.vStack5].map(x => x | 0);
   const vOff = [v.vOffX, v.vOffY, v.vOffZ], vSph = [v.vSphX, v.vSphY, v.vSphZ], vPost = [v.vPostX, v.vPostY, v.vPostZ];
   const vTail = [v.vTailX, v.vTailY, v.vTailZ], vTailOff = [v.vTailOffX, v.vTailOffY, v.vTailOffZ];
+  // Amazing IFS
+  const preAbs = [!!v.vPreAbsX, !!v.vPreAbsY, !!v.vPreAbsZ], ifsMode = [v.vIfsX | 0, v.vIfsY | 0, v.vIfsZ | 0];
+  const ifsOff = [v.vIfsOffX ?? 0, v.vIfsOffY ?? 0, v.vIfsOffZ ?? 0], ifsAdd = [v.vIfsAddX ?? 0, v.vIfsAddY ?? 0, v.vIfsAddZ ?? 0];
   const fixedR2 = v.vFixedR2, f2 = v.vFold2, fv = v.vFoldValue;
 
   const invert = (z, dr) => {
@@ -151,7 +154,8 @@ export function makeDE(v, scaleOverride) {
   const map = function map(p) {
     let z = [p[0], p[1], p[2]];
     let dr = 1, trap = 1e10;
-    const off = variant >= 8 ? [0, 0, 0] : (v.juliaMode ? jc : p);
+    const off = variant === 8 || variant === 9 ? [0, 0, 0] : (v.juliaMode ? jc : p);
+    let minDE = 1000;
     let actualScale = scale, scaleA = 0;
     let S = [1, 0, 0, 0, 1, 0, 0, 0, 1];
     const add = (a, b, k = 1) => [a[0] + b[0] * k, a[1] + b[1] * k, a[2] + b[2] * k];
@@ -272,6 +276,29 @@ export function makeDE(v, scaleOverride) {
         z = add(z, off);
         z = add(z, vPost);
         if (rotOn) z = mv(R, z);
+      } else if (variant === 10) {
+        // Amazing IFS — mirrors the SURF_VARIANT 10 block in glsl.js.
+        for (let k = 0; k < 3; k++) if (preAbs[k]) z[k] = abs(z[k]);
+        z = add(z, vOff);
+        if (v.vPolyOn) {
+          z[1] = abs(z[1]);
+          const psi = Math.PI / v.polarN;
+          const pa = abs(fmodC(Math.atan2(z[1], z[0]) + psi, 2 * psi) - psi);
+          const len = Math.hypot(z[0], z[1]);
+          z = [len * Math.cos(pa), len * Math.sin(pa), z[2]];
+        }
+        z = [boxF(z[0], fx), boxF(z[1], fy), z[2]];
+        if (v.vZFold) z[2] = boxF(z[2], fz);
+        for (let k = 0; k < 3; k++) if (ifsMode[k]) z[k] = (ifsMode[k] === 1 ? abs(z[k]) : z[k]) - ifsOff[k];
+        z = add(z, ifsAdd);
+        const rr = dot3(z);
+        const dividend = rr < minR2 ? minR2 : Math.min(rr, 1);
+        const useScale = (scaleA + scale) / dividend;
+        z = mul(z, useScale); dr = dr * abs(useScale) + v.vDEOffset;
+        if (v.scaleVary !== 0) scaleA -= v.scaleVary * (abs(scaleA) - 1);
+        if (rotOn) z = mv(R, z);
+        if (i >= (v.vMinDEStart | 0)) minDE = Math.min(minDE, Math.hypot(z[0], z[1], z[2]) / abs(dr));
+        if (v.vAddC) z = add(z, off);
       } else {
         if (variant === 9 && v.vPolyOn) {
           z[0] = abs(z[0]);
@@ -308,6 +335,7 @@ export function makeDE(v, scaleOverride) {
       trap = Math.min(trap, dot3(z));
       if (variant !== 0 && dot3(z) > 10000) break; // Mandelbulber bailout 100
     }
+    if (variant === 10 && v.vMinDE) return { d: 0.5 * minDE, trap };
     return { d: 0.5 * Math.hypot(z[0], z[1], z[2]) / abs(dr), trap };
   };
   map.applyFold = applyFold; // exposed for tests

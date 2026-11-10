@@ -58,13 +58,15 @@ void main() { float tr; float d = map(u_p, tr); gl_FragColor = pack(clamp(d / 16
     ['postInv', { invEnabled: true, invMode: 1, invStrength: 0.7, invRadius: 0.8, alpha: 0.4, beta: -0.3 }],
     ...Array.from({ length: 11 }, (_, t) => [`fold ${t}`, { foldType: t, foldZ: 0.6, polarN: 5, tgladWeight: 0.3 }]),
     ['hybrid 0+6/2', { foldType: 0, foldType2: 7, hybridPeriod: 2 }], ['hybrid 4+7/1', { foldType: 4, foldType2: 8, hybridPeriod: 1, polarN: 7 }],
-    ['pre+spin+start', { preAlpha: 0.5, preBeta: -0.3, spinZ: 0.11, spinX: -0.05, rotStart: 2, alpha: 0.4 }], ['inv limit 60', { invEnabled: true, invDELimit: 60, invRadius: 0.9 }], ...Array.from({ length: 10 }, (_, vi) => [`variant ${vi}`, { ...VARIANT_DEFAULTS[vi], surfVariant: vi, juliaCX: 0.3, juliaCY: -0.2, juliaCZ: 0.1 }]),
+    ['pre+spin+start', { preAlpha: 0.5, preBeta: -0.3, spinZ: 0.11, spinX: -0.05, rotStart: 2, alpha: 0.4 }], ['inv limit 60', { invEnabled: true, invDELimit: 60, invRadius: 0.9 }], ...Array.from({ length: 11 }, (_, vi) => [`variant ${vi}`, { ...VARIANT_DEFAULTS[vi], surfVariant: vi, juliaCX: 0.3, juliaCY: -0.2, juliaCZ: 0.1 }]),
     ['mod2 stack+z+swap', { ...VARIANT_DEFAULTS[3], surfVariant: 3, vStack1: 1, vStack2: 5, vStack3: 6, vZFold: true, vSwapXY: true, vSphZ: 0.4, cMult: 0.3, vCSwizzle: 3, scaleVary: 0.1 }],
     ['mod3 flips+folder', { ...VARIANT_DEFAULTS[4], surfVariant: 4, vStack1: 6, vStack2: 2, vEvenFlipY: true, vEvenFlipZ: true, cMult: -0.4, vOffX: 0.2 }],
     ['multi mbox+zrefl', { ...VARIANT_DEFAULTS[6], surfVariant: 6, vStack1: 3, vStack2: 1, vStack3: 4, vMboxFold: true, vZFold: true, influence: 0.7 }],
     ['m3d flips+post', { ...VARIANT_DEFAULTS[7], surfVariant: 7, vFlip: 5, vPostY: 0.3, vOffZ: -0.2, scaleVary: 0.2 }],
     ['kleinV2 poly', { ...VARIANT_DEFAULTS[9], surfVariant: 9, vPolyOn: true, polarN: 5, vOffX: 0.2, vKleinIters: 6, vTailScale: 1.8 }],
-    ['hybrid 3+8/3', { foldType: 3, foldType2: 9, hybridPeriod: 3, foldZ: 0.5 }]];
+    ['hybrid 3+8/3', { foldType: 3, foldType2: 9, hybridPeriod: 3, foldZ: 0.5 }],
+    ['ifs fold+poly', { ...VARIANT_DEFAULTS[10], surfVariant: 10, vIfsX: 1, vIfsY: 1, vIfsZ: 2, vIfsOffX: 0.6, vIfsOffY: 0.3, vIfsOffZ: -0.2, vPreAbsZ: true, vPolyOn: true, polarN: 5, vZFold: true, vIfsAddY: 0.1, alpha: 0.3 }],
+    ['ifs minDE+c', { ...VARIANT_DEFAULTS[10], surfVariant: 10, vIfsX: 1, vIfsY: 1, vIfsOffX: 0.4, vIfsOffY: 0.4, vMinDE: true, vAddC: true, juliaCX: 0.2, juliaCY: -0.3, juliaCZ: 0.1, scaleVary: 0.2, vDEOffset: 0.5 }]];
   const report = [];
   for (const [name, o] of sets) {
     const v = { ...defaults(), ...o };
@@ -145,6 +147,10 @@ for (const key of ['default', ...Object.keys(await page.evaluate(async () => (aw
   console.log(`  shot  ${key} (${((Date.now() - t0) / 1000).toFixed(1)} s)`);
 }
 ok(true, `screenshots in ${OUT}`);
+// Back to a cheap render before the layout checks: a full-res frame of the last
+// preset can take most of a minute on SwiftShader and starve the resize check.
+await page.evaluate(() => window.__surf.state.setMany({ renderScale: 0.25, maxSamples: 1 }));
+await page.waitForFunction(() => window.__surf.renderer.live.samples >= 1, null, { timeout: 180000 });
 
 // ── UI wiring: buttons that were dead in v1, keyframes, export downloads ──
 page.on('dialog', d => d.accept());
@@ -224,7 +230,7 @@ await page.evaluate(() => { const a = document.getElementById('app'); a.classLis
 await page.evaluate(() => window.__surf.state.setMany({ recSamples: 1, recRes: 0 })); // PNG frames use the Video & Frames settings
 await page.setViewportSize({ width: 960, height: 300 });
 await page.waitForTimeout(500);
-const dl = page.waitForEvent('download', { timeout: 300000 });
+const dl = page.waitForEvent('download', { timeout: 900000 }); // ~20 s a frame on SwiftShader
 await page.evaluate(() => [...document.querySelectorAll('button')].find(b => b.textContent.includes('Render PNG Frames')).click());
 const zipFile = await dl;
 const zipPath = `${OUT}/${zipFile.suggestedFilename()}`;
@@ -268,7 +274,7 @@ ok(/\.png$/.test(png.suggestedFilename()), `image downloaded: ${png.suggestedFil
   await page.evaluate(() => window.__surf.state.setMany({ recMode: 0, recRes: 2, recFormat: 1 }));
   dlv = page.waitForEvent('download', { timeout: 120000 });
   await page.evaluate(() => document.getElementById('recVideo').click());
-  await page.waitForTimeout(2000);
+  await page.waitForTimeout(5000); // software VP9 at 720p needs a few seconds under load to emit anything
   const during = await page.evaluate(() => [canvas => [canvas.width, canvas.height]][0](document.getElementById('view')));
   await page.evaluate(() => document.getElementById('recVideo').click());
   vid = await dlv.catch(async e => { throw new Error(`real-time 720p: no download — toast "${await page.textContent('#toast')}" (${e.message.split('\n')[0]})`); });

@@ -218,3 +218,6 @@ dialog .dlg-buttons { display: flex; gap: 10px; justify-content: flex-end; margi
   .dock-right { right: 0; }
   .app.no-left .dock-left, .app.no-right .dock-right { display: none; }
 }
+
+/* Gradient preview strip under the Gradient dropdown */
+.grad-preview { display: block; width: 100%; height: 12px; margin: 6px 0 2px; border-radius: 4px; border: 1px solid var(--line); cursor: pointer; image-rendering: auto; }

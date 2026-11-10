@@ -14,6 +14,7 @@
 import { VERT, DISPLAY_FRAG, fractalFrag } from './glsl.js';
 import { compileProgram, finishProgram, setUniforms, detectAccumFormat, createTarget, deleteTarget } from './gl.js';
 import { cameraBasis, lightWorldPos } from './camera.js';
+import { gradientSpec, gradientKey, gradientScale, buildGradientLUT, LUT_SIZE } from './gradients.js';
 import { fractalRotation, mat3ToColumnMajor, hexToRgb, fract, mat3Mul, rotX, rotY } from './vec.js';
 
 // Panorama orientation: yaw about Y, then pitch about X.
@@ -39,6 +40,7 @@ export function lensFor(n) { return [halton(n + 1, 2), halton(n + 1, 3)]; }
 // Keys starting with "__" are program-selection data, not uniforms.
 export function sceneUniforms(v, scaleOverride) {
   const cam = cameraBasis(v);
+  const gspec = gradientSpec(v);
   return {
     __foldA: v.foldType,
     __foldB: v.foldType2 - 1,
@@ -65,6 +67,13 @@ export function sceneUniforms(v, scaleOverride) {
     u_vTailScale: v.vTailScale,
     u_vTailOff: [v.vTailOffX, v.vTailOffY, v.vTailOffZ],
     u_vPolyOn: v.vPolyOn,
+    u_vPreAbs: [v.vPreAbsX ? 1 : 0, v.vPreAbsY ? 1 : 0, v.vPreAbsZ ? 1 : 0],
+    u_vIfsMode: [v.vIfsX | 0, v.vIfsY | 0, v.vIfsZ | 0],
+    u_vIfsOff: [v.vIfsOffX, v.vIfsOffY, v.vIfsOffZ],
+    u_vIfsAdd: [v.vIfsAddX, v.vIfsAddY, v.vIfsAddZ],
+    u_vAddC: !!v.vAddC,
+    u_vMinDE: !!v.vMinDE,
+    u_vMinDEStart: v.vMinDEStart | 0,
     u_vPolyAbsY: v.vPolyAbsY,
     __tonemap: v.renderMode === 1 ? 1 : v.tonemap, // path tracing outputs linear radiance
     u_ptBounces: v.ptBounces,
@@ -133,7 +142,13 @@ export function sceneUniforms(v, scaleOverride) {
     u_brightness: v.brightness,
     u_vignette: v.vignette,
     u_colorShift: v.colorShift,
-    u_palette: v.palette,
+    u_colorSource: v.colorSource | 0,
+    u_foldColW: v.foldColW ?? 1,
+    u_sphColW: v.sphColW ?? 1,
+    u_colorIters: v.colorIters ?? 40,
+    u_gradScale: gradientScale(gspec),
+    __grad: gradientKey(gspec),
+    __gradSpec: gspec,
     u_lightPos: lightWorldPos(v, cam),
     u_lightColor: hexToRgb(v.lightColor),
     u_bgColor: hexToRgb(v.bgColor),
@@ -313,10 +328,30 @@ export class Renderer {
 
   // Draw one sample of `scene` into `dst`, blending with `src`. Returns false
   // (and draws nothing) if the scene's program is still compiling.
+  // Colour gradient LUT on texture unit 2; rebuilt only when its spec changes.
+  _syncGradient(scene) {
+    if (!scene.__gradSpec || scene.__grad === this.gradKey) return;
+    const gl = this.gl;
+    if (!this.gradTex) this.gradTex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, this.gradTex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, LUT_SIZE, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, buildGradientLUT(scene.__gradSpec));
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT); // periodic: blend across the seam
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.activeTexture(gl.TEXTURE0);
+    this.gradKey = scene.__grad;
+  }
+
   drawSample(scene, dst, src, { resolution, offset, sampleIndex }) {
     const prog = this.program(scene);
     if (!prog) return false;
     const gl = this.gl;
+    this._syncGradient(scene);
+    gl.activeTexture(gl.TEXTURE2);
+    gl.bindTexture(gl.TEXTURE_2D, this.gradTex);
     gl.bindFramebuffer(gl.FRAMEBUFFER, dst.fb);
     gl.viewport(0, 0, dst.w, dst.h);
     gl.useProgram(prog.prog);
@@ -333,6 +368,7 @@ export class Renderer {
       u_lensSample: lensFor(sampleIndex),
       u_prev: 0,
       u_env: 1,
+      u_grad: 2,
       u_envAspect: this.envAspect ?? 2,
       u_blend: 1 / (sampleIndex + 1),
       u_sampleIndex: sampleIndex,

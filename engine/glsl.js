@@ -164,6 +164,14 @@ uniform float u_vTailScale;
 uniform vec3  u_vTailOff;
 uniform bool  u_vPolyOn;
 uniform bool  u_vPolyAbsY;
+// Amazing IFS (variant 10)
+uniform vec3  u_vPreAbs;       // 1 = abs() that axis before the folds
+uniform vec3  u_vIfsMode;      // per axis: 0 off, 1 mirror + shift (|z|−o), 2 shift only
+uniform vec3  u_vIfsOff;
+uniform vec3  u_vIfsAdd;       // offset added after the IFS fold, before the sphere fold
+uniform bool  u_vAddC;         // add c (pixel or Julia) like Mandelbulber's "c pixel" option
+uniform bool  u_vMinDE;        // DE = min over iterations of |z|/dr (Mandelbulber custom DE)
+uniform int   u_vMinDEStart;   // first iteration that counts (Mandelbulber startIterationsC)
 
 uniform bool  u_invEnabled;
 uniform int   u_invMode;
@@ -203,7 +211,13 @@ uniform float u_volumetric;
 uniform float u_brightness;
 uniform float u_vignette;
 uniform float u_colorShift;
-uniform int   u_palette;
+uniform int   u_colorSource;   // 0 orbit trap, 1 fold count, 2 trap + folds
+uniform float u_foldColW;      // weight per box-fold activation
+uniform float u_sphColW;       // weight per sphere-fold activation (inner 1×, middle ½×)
+uniform int   u_colorIters;    // folds count only in the first N iterations (broad bands)
+// colour source 3 = fold amounts (continuous), Mandelbulber's aux.color for the surf family
+uniform sampler2D u_grad;      // 256×1 colour gradient LUT (engine/gradients.js)
+uniform float u_gradScale;
 uniform vec3  u_lightPos;
 uniform vec3  u_lightColor;
 uniform vec3  u_bgColor;
@@ -251,8 +265,29 @@ vec3 tanhSafe(vec3 x) { x = clamp(x, -15.0, 15.0); vec3 e = exp(2.0 * x); return
 
 // Box fold (Mandelbox / Amazing Surf core).
 vec3 boxFold(vec3 z) { return abs(z + u_fold) - abs(z - u_fold) - z; }
-vec2 boxXY(vec2 v, vec2 f) { return abs(v + f) - abs(v - f) - v; }
-float boxF(float v, float f) { return abs(v + f) - abs(v - f) - v; }
+// Fold-count colouring (Mandelbulber-style "aux colour"): every box-fold that
+// actually reflects a component, and every sphere-fold that rescales, adds to a
+// running count. The count is piecewise constant over the surface, so a banded
+// gradient turns it into the crisp stripes Amazing Surf renders are known for.
+float g_boxCol;
+float g_sphCol;
+float g_boxAmt; // Σ (|z| − 1) over components a box fold reflected (Mandelbulber difs.xyz)
+float g_sphAmt; // Σ (r² − minR²)/100 where the sphere fold left z outside minR (difs.w)
+float g_colOn; // 1 while the current iteration counts toward the colour
+vec2 boxXY(vec2 v, vec2 f) {
+  vec2 hit = step(f, abs(v));
+  vec2 r = abs(v + f) - abs(v - f) - v;
+  g_boxCol += g_colOn * (hit.x + hit.y);
+  g_boxAmt += g_colOn * dot(hit, abs(r) - 1.0);
+  return r;
+}
+float boxF(float v, float f) {
+  float hit = step(f, abs(v));
+  float r = abs(v + f) - abs(v - f) - v;
+  g_boxCol += g_colOn * hit;
+  g_boxAmt += g_colOn * hit * (abs(r) - 1.0);
+  return r;
+}
 // C-style fmod (result takes the sign of the dividend), as in Mandelbulber.
 float fmodC(float a, float b) { float q = a / b; return a - b * sign(q) * floor(abs(q)); }
 `;
@@ -268,11 +303,16 @@ const FRAG_TAIL = `
 // The app-level transforms — inversion, axis swap, pre-rotation, spin — wrap
 // every variant.
 float map(vec3 p, out float trap) {
+  g_boxCol = 0.0;
+  g_sphCol = 0.0;
+  g_boxAmt = 0.0;
+  g_sphAmt = 0.0;
+  float minDE = 1000.0;
   vec3 z = p;
   float dr = 1.0;
   trap = 1e10;
   vec3 offset = u_juliaMode ? u_juliaC : p;
-#if SURF_VARIANT >= 8
+#if SURF_VARIANT == 8 || SURF_VARIANT == 9
   offset = vec3(0.0); // Klein formulas add no c
 #endif
   float actualScale = u_scale;
@@ -282,6 +322,7 @@ float map(vec3 p, out float trap) {
 
   for (int i = 0; i < 40; i++) {
     if (i >= u_iterations) break;
+    g_colOn = i < u_colorIters ? 1.0 : 0.0;
 
     if (u_invEnabled && u_invMode == 0) sphereInvert(z, dr);
 
@@ -299,6 +340,8 @@ float map(vec3 p, out float trap) {
     z = foldA(z);
   #endif
     float rr = u_cylinder ? dot(z.xy, z.xy) : dot(z, z);
+    g_sphCol += g_colOn * (rr < minR2 ? 1.0 : (rr < 1.0 ? 0.5 : 0.0));
+    g_sphAmt += g_colOn * max(rr - minR2, 0.0) * 0.01;
     float dividend = (rr < minR2) ? minR2 : min(rr, 1.0);
     float m = actualScale / dividend;
     // Influence blends the sphere-fold scale toward 1; the derivative uses the
@@ -316,6 +359,8 @@ float map(vec3 p, out float trap) {
     z.xy = boxXY(z.xy, u_fold.xy);
     float rr = dot(z, z);
     if (u_cylinder) rr -= z.z * z.z;
+    g_sphCol += g_colOn * (rr < minR2 ? 1.0 : (rr < 1.0 ? 0.5 : 0.0));
+    g_sphAmt += g_colOn * max(rr - minR2, 0.0) * 0.01;
     float dividend = rr < minR2 ? minR2 : min(rr, 1.0);
     float m = actualScale / dividend;
     float k = (m - 1.0) * u_influence + 1.0;
@@ -332,6 +377,8 @@ float map(vec3 p, out float trap) {
     z += u_vOff;
     float rr = dot(z, z);
     if (u_cylinder) rr -= z.z * z.z;
+    g_sphCol += g_colOn * (rr < minR2 ? 1.0 : (rr < 1.0 ? 0.5 : 0.0));
+    g_sphAmt += g_colOn * max(rr - minR2, 0.0) * 0.01;
     float f = rr < minR2 ? 1.0 / minR2 : (rr < 1.0 ? 1.0 / rr : 1.0);
     z *= f;
     dr *= f;
@@ -358,6 +405,8 @@ float map(vec3 p, out float trap) {
     z += u_vOff;
     float rr = dot(z, z);
     if (u_cylinder) rr -= z.z * z.z;
+    g_sphCol += g_colOn * (rr < minR2 ? 1.0 : (rr < 1.0 ? 0.5 : 0.0));
+    g_sphAmt += g_colOn * max(rr - minR2, 0.0) * 0.01;
     z += u_vSph;
     float f = rr < minR2 ? u_vFixedR2 / minR2 : (rr < u_vFixedR2 ? u_vFixedR2 / rr : 1.0);
     z *= f;
@@ -379,6 +428,8 @@ float map(vec3 p, out float trap) {
     if (u_vZFold) z.z = boxF(z.z, u_fold.z);
     z += u_vOff;
     float rr = dot(z, z);
+    g_sphCol += g_colOn * (rr < minR2 ? 1.0 : (rr < 1.0 ? 0.5 : 0.0));
+    g_sphAmt += g_colOn * max(rr - minR2, 0.0) * 0.01;
     float dividend = rr < minR2 ? minR2 : min(rr, 1.0);
     float useScale = (scaleA + u_scale) / dividend;
     z *= useScale;
@@ -396,6 +447,8 @@ float map(vec3 p, out float trap) {
     z += u_vOff;
     float rr = dot(z, z);
     if (u_cylinder) rr -= z.z * z.z;
+    g_sphCol += g_colOn * (rr < minR2 ? 1.0 : (rr < 1.0 ? 0.5 : 0.0));
+    g_sphAmt += g_colOn * max(rr - minR2, 0.0) * 0.01;
     z += u_vSph;
     float f = rr < minR2 ? 1.0 / minR2 : (rr < 1.0 ? 1.0 / rr : 1.0);
     z *= f;
@@ -423,6 +476,8 @@ float map(vec3 p, out float trap) {
     z += u_vOff;
     float rr = dot(z, z);
     if (u_cylinder) rr -= z.z * z.z;
+    g_sphCol += g_colOn * (rr < minR2 ? 1.0 : (rr < 1.0 ? 0.5 : 0.0));
+    g_sphAmt += g_colOn * max(rr - minR2, 0.0) * 0.01;
     float m = actualScale;
     if (rr < minR2) m /= minR2;
     else if (rr < 1.0) m /= rr;
@@ -431,6 +486,39 @@ float map(vec3 p, out float trap) {
     z += offset;
     z += u_vPost;
     if (rotOn) z = u_rotMatrix * z;
+
+#elif SURF_VARIANT == 10
+    // Amazing IFS (Mandelbulber fractal_amazing_ifs.cpp; Kali, DarkBeam): Amazing
+    // Surf Mod 4 plus an IFS mirror-and-shift fold, with c off by default.
+    // Its built-in sphere inversion is Kyma's Sphere Inversion (start of iteration).
+    if (u_vPreAbs.x > 0.5) z.x = abs(z.x);
+    if (u_vPreAbs.y > 0.5) z.y = abs(z.y);
+    if (u_vPreAbs.z > 0.5) z.z = abs(z.z);
+    z += u_vOff;
+    if (u_vPolyOn) {
+      z.y = abs(z.y);
+      float psi = 3.14159265 / u_polarN;
+      float pa = abs(fmodC(atan(z.y, z.x) + psi, 2.0 * psi) - psi);
+      z.xy = length(z.xy) * vec2(cos(pa), sin(pa));
+    }
+    z.xy = boxXY(z.xy, u_fold.xy);
+    if (u_vZFold) z.z = boxF(z.z, u_fold.z);
+    // IFS fold: mirror (|z|) then shift, per axis; "shift only" keeps the sign.
+    if (u_vIfsMode.x > 0.5) z.x = (u_vIfsMode.x < 1.5 ? abs(z.x) : z.x) - u_vIfsOff.x;
+    if (u_vIfsMode.y > 0.5) z.y = (u_vIfsMode.y < 1.5 ? abs(z.y) : z.y) - u_vIfsOff.y;
+    if (u_vIfsMode.z > 0.5) z.z = (u_vIfsMode.z < 1.5 ? abs(z.z) : z.z) - u_vIfsOff.z;
+    z += u_vIfsAdd;
+    float rr = dot(z, z);
+    g_sphCol += g_colOn * (rr < minR2 ? 1.0 : (rr < 1.0 ? 0.5 : 0.0));
+    g_sphAmt += g_colOn * max(rr - minR2, 0.0) * 0.01;
+    float dividend = rr < minR2 ? minR2 : min(rr, 1.0);
+    float useScale = (scaleA + u_scale) / dividend;
+    z *= useScale;
+    dr = dr * abs(useScale) + u_vDEOffset;
+    if (u_scaleVary != 0.0) scaleA -= u_scaleVary * (abs(scaleA) - 1.0);
+    if (rotOn) z = u_rotMatrix * z;
+    if (i >= u_vMinDEStart) minDE = min(minDE, length(z) / abs(dr));
+    if (u_vAddC) z += offset;
 
 #else
     // Klein / Klein V2: surf iterations, then a full box-fold × scale tail.
@@ -455,6 +543,8 @@ float map(vec3 p, out float trap) {
       else z.yz = z.zy;
   #endif
       float rr = dot(z, z);
+      g_sphCol += g_colOn * (rr < minR2 ? 1.0 : (rr < 1.0 ? 0.5 : 0.0));
+    g_sphAmt += g_colOn * max(rr - minR2, 0.0) * 0.01;
       float dividend = rr < minR2 ? minR2 : min(rr, 1.0);
       float useScale = (scaleA + u_scale) / dividend;
       z *= useScale;
@@ -477,6 +567,16 @@ float map(vec3 p, out float trap) {
     if (dot(z, z) > 10000.0) break; // Mandelbulber bailout 100
 #endif
   }
+  if (u_colorSource == 3) {
+    // ×2.5 cancels the shader's trap·0.4, so one weighted unit = one index unit.
+    trap = (g_boxAmt * u_foldColW + g_sphAmt * u_sphColW) * 2.5;
+  } else if (u_colorSource != 0) {
+    float folds = g_boxCol * u_foldColW + g_sphCol * u_sphColW;
+    trap = u_colorSource == 1 ? folds * 2.5 : trap + folds * 2.5;
+  }
+#if SURF_VARIANT == 10
+  if (u_vMinDE) return 0.5 * minDE;
+#endif
   return 0.5 * length(z) / abs(dr);
 }
 
@@ -517,15 +617,10 @@ float softShadow(vec3 ro, vec3 rd, float maxT, float k, float eps) {
   return clamp(res, 0.0, 1.0);
 }
 
+// One gradient period spans the LUT; u_gradScale folds in the gradient's
+// natural band width, Repeat and Mirror. Sampled at the texel centre row.
 vec3 palette(float idx) {
-  if (u_palette == 1) return 0.6 + 0.4 * cos(idx * 2.0 + vec3(0.0, 0.5, 1.0));
-  if (u_palette == 2) return 0.4 + 0.6 * cos(idx * 3.0 + vec3(2.5, 3.5, 4.0));
-  if (u_palette == 3) return 0.5 + 0.5 * cos(idx * 3.5 + vec3(1.5, 1.0, 0.5));
-  if (u_palette == 4) return vec3(0.5 + 0.5 * cos(idx));
-  if (u_palette == 5) return 0.5 + 0.5 * cos(idx * 2.5 + vec3(2.0, 0.0, 4.0));
-  if (u_palette == 6) return 0.6 + 0.4 * cos(idx * 1.8 + vec3(0.0, 3.0, 2.0));
-  if (u_palette == 7) return 0.5 + 0.5 * cos(idx * 4.0 + vec3(4.0, 2.0, 0.0));
-  return 0.5 + 0.5 * cos(idx + vec3(0.0, 2.0, 4.0));
+  return texture2D(u_grad, vec2(fract(idx * u_gradScale), 0.5)).rgb;
 }
 
 // ── Environment lookups ──

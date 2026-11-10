@@ -9,6 +9,8 @@ import { ENV_PRESETS, proceduralEnv, imageEnv, looksLikePanorama } from './engin
 import { pixelRay } from './engine/camera.js';
 import { renderImage, canvasToPngBlob, downloadBlob, stamp, Cancelled } from './engine/export.js';
 import { ZipWriter } from './engine/zip.js';
+import { gradientSpec, drawGradientPreview, GRADIENTS } from './engine/gradients.js';
+const GRADIENT_COUNT = GRADIENTS.length;
 import { VideoWriter, pickEncoder, canEncodeVideo, videoBitrate } from './engine/video.js';
 import { FOLD_NAMES, SURF_VARIANTS as SURF_VARIANT_NAMES, defaults as paramDefaults } from './engine/params.js';
 const PARAM_DEF = paramDefaults();
@@ -17,7 +19,7 @@ import { BIOMES, evolve, rebirth, encodeDiscovery, decodeDiscovery, makeProject,
 import { wrapPi, clamp } from './engine/vec.js';
 import { Panel } from './ui/panel.js';
 
-export const VERSION = '2.7.0';
+export const VERSION = '2.10.0';
 
 const $ = id => document.getElementById(id);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
@@ -189,7 +191,11 @@ panel.group('view').append(resetViewBtn);
 const presetSel = el('select', 'preset-select');
 presetSel.id = 'presetSelect';
 presetSel.append(Object.assign(el('option', '', `Choose a preset (${Object.keys(BIOMES).length})…`), { value: '', disabled: true, selected: true }));
-const presetGroups = [['Classic engine', k => !BIOMES[k].v.surfVariant], ['Mandelbulber Amazing Surf', k => !!BIOMES[k].v.surfVariant]];
+const presetGroups = [
+  ['Classic engine', k => !BIOMES[k].group && !BIOMES[k].v.surfVariant],
+  ['Mandelbulber Amazing Surf', k => !BIOMES[k].group && !!BIOMES[k].v.surfVariant],
+  ['Amazing IFS', k => BIOMES[k].group === 'ifs'],
+];
 for (const [label, test] of presetGroups) {
   const og = el('optgroup');
   og.label = label;
@@ -204,6 +210,21 @@ presetSel.addEventListener('change', () => {
   toast(`Preset: ${b.label}`);
 });
 panel.group('presets').append(presetSel);
+
+// Gradient preview strip: the actual LUT (after Wrap / Reverse / Hue / Saturation),
+// one period. Click it to step to the next gradient.
+const gradPreview = el('canvas', 'grad-preview');
+gradPreview.width = 256; gradPreview.height = 12;
+gradPreview.title = 'Gradient preview (one period) — click for the next gradient';
+panel.controls.get('palette').wrap.after(gradPreview);
+const syncGradPreview = () => drawGradientPreview(gradPreview, gradientSpec(state.values));
+gradPreview.addEventListener('click', () => {
+  pushHistory();
+  const n = GRADIENT_COUNT;
+  state.set('palette', ((state.values.palette | 0) + 1) % n);
+});
+state.onChange(id => { if (id == null || id === 'palette' || /^grad/.test(id)) syncGradPreview(); });
+syncGradPreview();
 
 // ── Surf variant ────────────────────────────────────────────────────────────
 const variantDesc = el('div', 'fold-desc');

@@ -25,6 +25,8 @@
 
 // side: which dock the group lives in. Left = the formula (what the fractal
 // IS); right = the scene and output (how it's seen, animated and exported).
+import { GRADIENT_NAMES, WRAP_MODES, CUSTOM_GRADIENT } from './gradients.js';
+
 export const GROUPS = [
   { id: 'presets', side: 'left',  title: 'Biome Presets', accent: true, open: true },
   { id: 'variant', side: 'left',  title: 'Surf Variant', accent: true, open: true },
@@ -46,11 +48,11 @@ export const GROUPS = [
 
 const PI = 3.1416;
 
-export const SURF_VARIANTS = ['Classic (v2 engine)', 'Amazing Surf (Mandelbulber)', 'Mod 1', 'Mod 2', 'Mod 3', 'Mod 4', 'Multi', 'M3D (Mandelbulb3D)', 'Klein', 'Klein V2'];
+export const SURF_VARIANTS = ['Classic (v2 engine)', 'Amazing Surf (Mandelbulber)', 'Mod 1', 'Mod 2', 'Mod 3', 'Mod 4', 'Multi', 'M3D (Mandelbulb3D)', 'Klein', 'Klein V2', 'Amazing IFS'];
 export const STACK_FOLDS = ['Off', 'Box (Tglad)', 'Inverse Fold  f−||z|−f|', 'Abs Offset  |z+f|', 'Conditional Reflect', 'DarkBeam Double', 'Clamped Folder'];
 // Variant groups (indices into SURF_VARIANTS) used to gate controls.
 const V_STACK = [2, 3, 4, 6];         // fold-stack variants
-const V_ALL_BUT_KLEIN = [0, 1, 2, 3, 4, 5, 6, 7];
+const V_ALL_BUT_KLEIN = [0, 1, 2, 3, 4, 5, 6, 7, 10]; // variants that take c (IFS only with Add c)
 
 export const FOLD_NAMES = ['Type 1 (Box)', 'Type 2', 'Type 3', 'Surf XY (Mandelbulber)', 'Tetrahedral + Box', 'Octahedral + Box', 'Icosahedral + Box', 'Polar Kaleidoscope', 'Smooth Box (tanh)', 'Abs Shift (Kali)', 'Diagonal Box'];
 
@@ -66,7 +68,7 @@ export const PARAMS = [
   { id: 'vStack5', label: 'Slot 5', type: 'select', group: 'variant', options: STACK_FOLDS, def: 0, gate: 'surfVariant', gateEq: V_STACK },
   { id: 'vFoldValue', label: 'Reflect V', type: 'range', group: 'variant', min: 0, max: 4, step: 0.01, def: 2, row: 'vfv', gate: 'surfVariant', gateEq: V_STACK, mutate: true },
   { id: 'vFold2', label: 'Fold f2', type: 'range', group: 'variant', min: 0, max: 4, step: 0.01, def: 2, row: 'vfv', gate: 'surfVariant', gateEq: V_STACK, mutate: true },
-  { id: 'vZFold', label: 'Fold Z Axis Too', type: 'bool', group: 'variant', def: false, gate: 'surfVariant', gateEq: [3, 4, 5, 6, 8, 9] },
+  { id: 'vZFold', label: 'Fold Z Axis Too', type: 'bool', group: 'variant', def: false, gate: 'surfVariant', gateEq: [3, 4, 5, 6, 8, 9, 10] },
   { id: 'vSwapXY', label: 'Swap X/Y After Fold', type: 'bool', group: 'variant', def: false, gate: 'surfVariant', gateEq: [3, 4, 8, 9] },
   { id: 'vSwapYZ', label: 'Swap Y/Z (Klein)', type: 'bool', group: 'variant', def: true, gate: 'surfVariant', gateEq: 8 },
   { id: 'vEvenFlipY', label: 'Flip Y on Even Iterations', type: 'bool', group: 'variant', def: false, gate: 'surfVariant', gateEq: 4 },
@@ -75,10 +77,10 @@ export const PARAMS = [
   { id: 'vCSwizzle', label: 'C Swizzle (C-Mult add)', type: 'select', group: 'variant', options: ['XYZ', 'XZY', 'YXZ', 'YZX', 'ZXY', 'ZYX'], def: 0, gate: 'surfVariant', gateEq: [3, 4, 6] },
   { id: 'vMboxFold', label: 'Add Mandelbox Sphere Fold', type: 'bool', group: 'variant', def: false, gate: 'surfVariant', gateEq: 6 },
   { id: 'vFixedR2', label: 'Outer Radius² (fixed)', type: 'range', group: 'variant', min: 0.1, max: 4, step: 0.001, def: 1, hardMin: 0.0001, gate: 'surfVariant', gateEq: [3, 4, 6], mutate: true },
-  { id: 'vDEOffset', label: 'DE Offset', type: 'range', group: 'variant', min: 0, max: 2, step: 0.01, def: 1, gate: 'surfVariant', gateEq: [5, 7, 8, 9] },
-  { id: 'vOffX', label: 'OX', type: 'range', group: 'variant', min: -2, max: 2, step: 0.01, def: 0, row: 'voff', section: 'Pre-Sphere Offset', gate: 'surfVariant', gateEq: [2, 3, 4, 5, 6, 7, 9], mutate: true },
-  { id: 'vOffY', label: 'OY', type: 'range', group: 'variant', min: -2, max: 2, step: 0.01, def: 0, row: 'voff', gate: 'surfVariant', gateEq: [2, 3, 4, 5, 6, 7, 9], mutate: true },
-  { id: 'vOffZ', label: 'OZ', type: 'range', group: 'variant', min: -2, max: 2, step: 0.01, def: 0, row: 'voff', gate: 'surfVariant', gateEq: [2, 3, 4, 5, 6, 7, 9], mutate: true },
+  { id: 'vDEOffset', label: 'DE Offset', type: 'range', group: 'variant', min: 0, max: 2, step: 0.01, def: 1, gate: 'surfVariant', gateEq: [5, 7, 8, 9, 10] },
+  { id: 'vOffX', label: 'OX', type: 'range', group: 'variant', min: -2, max: 2, step: 0.01, def: 0, row: 'voff', section: 'Pre-Sphere Offset', gate: 'surfVariant', gateEq: [2, 3, 4, 5, 6, 7, 9, 10], mutate: true },
+  { id: 'vOffY', label: 'OY', type: 'range', group: 'variant', min: -2, max: 2, step: 0.01, def: 0, row: 'voff', gate: 'surfVariant', gateEq: [2, 3, 4, 5, 6, 7, 9, 10], mutate: true },
+  { id: 'vOffZ', label: 'OZ', type: 'range', group: 'variant', min: -2, max: 2, step: 0.01, def: 0, row: 'voff', gate: 'surfVariant', gateEq: [2, 3, 4, 5, 6, 7, 9, 10], mutate: true },
   { id: 'vSphX', label: 'SX', type: 'range', group: 'variant', min: -2, max: 2, step: 0.01, def: 0, row: 'vsph', section: 'Sphere-Fold Centre', gate: 'surfVariant', gateEq: [3, 4, 6], mutate: true },
   { id: 'vSphY', label: 'SY', type: 'range', group: 'variant', min: -2, max: 2, step: 0.01, def: 0, row: 'vsph', gate: 'surfVariant', gateEq: [3, 4, 6], mutate: true },
   { id: 'vSphZ', label: 'SZ', type: 'range', group: 'variant', min: -2, max: 2, step: 0.01, def: 0, row: 'vsph', gate: 'surfVariant', gateEq: [3, 4, 6], mutate: true },
@@ -93,8 +95,24 @@ export const PARAMS = [
   { id: 'vTailOffX', label: 'TOX', type: 'range', group: 'variant', min: -2, max: 2, step: 0.01, def: 0, row: 'vtoff', gate: 'surfVariant', gateEq: [8, 9], mutate: true },
   { id: 'vTailOffY', label: 'TOY', type: 'range', group: 'variant', min: -2, max: 2, step: 0.01, def: 0, row: 'vtoff', gate: 'surfVariant', gateEq: [8, 9], mutate: true },
   { id: 'vTailOffZ', label: 'TOZ', type: 'range', group: 'variant', min: -2, max: 2, step: 0.01, def: 0, row: 'vtoff', gate: 'surfVariant', gateEq: [8, 9], mutate: true },
-  { id: 'vPolyOn', label: 'Polyfold (N = Polar Sectors)', type: 'bool', group: 'variant', def: false, gate: 'surfVariant', gateEq: 9 },
+  { id: 'vPolyOn', label: 'Polyfold (N = Polar Sectors)', type: 'bool', group: 'variant', def: false, gate: 'surfVariant', gateEq: [9, 10] },
   { id: 'vPolyAbsY', label: 'Polyfold: Mirror Y', type: 'bool', group: 'variant', def: true, gate: 'surfVariant', gateEq: 9 },
+  // Amazing IFS (variant 10)
+  { id: 'vPreAbsX', label: '|X|', type: 'bool', group: 'variant', def: false, row: 'vpre', section: 'Pre-Fold Abs', gate: 'surfVariant', gateEq: 10 },
+  { id: 'vPreAbsY', label: '|Y|', type: 'bool', group: 'variant', def: false, row: 'vpre', gate: 'surfVariant', gateEq: 10 },
+  { id: 'vPreAbsZ', label: '|Z|', type: 'bool', group: 'variant', def: false, row: 'vpre', gate: 'surfVariant', gateEq: 10 },
+  { id: 'vIfsX', label: 'X', type: 'select', group: 'variant', options: ['Off', 'Mirror + shift', 'Shift only'], def: 0, row: 'vifs', section: 'IFS Fold  z = |z| − offset', gate: 'surfVariant', gateEq: 10 },
+  { id: 'vIfsY', label: 'Y', type: 'select', group: 'variant', options: ['Off', 'Mirror + shift', 'Shift only'], def: 0, row: 'vifs', gate: 'surfVariant', gateEq: 10 },
+  { id: 'vIfsZ', label: 'Z', type: 'select', group: 'variant', options: ['Off', 'Mirror + shift', 'Shift only'], def: 0, row: 'vifs', gate: 'surfVariant', gateEq: 10 },
+  { id: 'vIfsOffX', label: 'IX', type: 'range', group: 'variant', min: -2, max: 2, step: 0.001, def: 0, row: 'vifso', gate: 'surfVariant', gateEq: 10, mutate: true, fine: true },
+  { id: 'vIfsOffY', label: 'IY', type: 'range', group: 'variant', min: -2, max: 2, step: 0.001, def: 0, row: 'vifso', gate: 'surfVariant', gateEq: 10, mutate: true, fine: true },
+  { id: 'vIfsOffZ', label: 'IZ', type: 'range', group: 'variant', min: -2, max: 2, step: 0.001, def: 0, row: 'vifso', gate: 'surfVariant', gateEq: 10, mutate: true, fine: true },
+  { id: 'vIfsAddX', label: 'AX', type: 'range', group: 'variant', min: -2, max: 2, step: 0.001, def: 0, row: 'vifsa', section: 'Post-IFS Offset', gate: 'surfVariant', gateEq: 10, mutate: true },
+  { id: 'vIfsAddY', label: 'AY', type: 'range', group: 'variant', min: -2, max: 2, step: 0.001, def: 0, row: 'vifsa', gate: 'surfVariant', gateEq: 10, mutate: true },
+  { id: 'vIfsAddZ', label: 'AZ', type: 'range', group: 'variant', min: -2, max: 2, step: 0.001, def: 0, row: 'vifsa', gate: 'surfVariant', gateEq: 10, mutate: true },
+  { id: 'vAddC', label: 'Add c (pixel / Julia)', type: 'bool', group: 'variant', def: false, gate: 'surfVariant', gateEq: 10 },
+  { id: 'vMinDE', label: 'Smooth DE (min over iterations)', type: 'bool', group: 'variant', def: false, gate: 'surfVariant', gateEq: 10 },
+  { id: 'vMinDEStart', label: 'Smooth DE From Iteration', type: 'range', group: 'variant', min: 0, max: 20, step: 1, def: 0, int: true, hardMin: 0, hardMax: 39, gate: 'vMinDE' },
 
   // ── Geometric core ──────────────────────────────────────────────────────
   { id: 'scale', label: 'Base Scale', type: 'range', group: 'geo', min: -4, max: 4, step: 0.001, def: 2, mutate: true },
@@ -107,7 +125,7 @@ export const PARAMS = [
   { id: 'foldType', label: 'Fold A', type: 'select', group: 'ftype', options: FOLD_NAMES, def: 0, gate: 'surfVariant', gateEq: 0 },
   { id: 'foldType2', label: 'Hybrid Fold B', type: 'select', group: 'ftype', options: ['Off', ...FOLD_NAMES], def: 0, row: 'hybrid', gate: 'surfVariant', gateEq: 0 },
   { id: 'hybridPeriod', label: 'B Every N', type: 'range', group: 'ftype', min: 1, max: 8, step: 1, def: 2, int: true, hardMin: 1, hardMax: 40, row: 'hybrid', gate: 'surfVariant', gateEq: 0 },
-  { id: 'polarN', label: 'Polar Sectors', type: 'range', group: 'ftype', min: 2, max: 16, step: 1, def: 6, int: true, hardMin: 1, hardMax: 64, gate: 'surfVariant', gateEq: [0, 9] },
+  { id: 'polarN', label: 'Polar Sectors', type: 'range', group: 'ftype', min: 2, max: 16, step: 1, def: 6, int: true, hardMin: 1, hardMax: 64, gate: 'surfVariant', gateEq: [0, 9, 10] },
   { id: 'axisOrder', label: 'Axis Swap', type: 'select', group: 'ftype', options: ['XYZ', 'XZY', 'YXZ', 'YZX', 'ZXY', 'ZYX'], def: 0, row: 'axis' },
   { id: 'tgladWeight', label: 'Fold Weight', type: 'range', group: 'ftype', min: 0, max: 2, step: 0.01, def: 0, mutate: true, row: 'axis', gate: 'surfVariant', gateEq: 0 },
 
@@ -186,8 +204,24 @@ export const PARAMS = [
   { id: 'targetZ', type: 'hidden', group: 'view', def: 0 },
 
   // ── Color & lens ────────────────────────────────────────────────────────
-  { id: 'palette', label: 'Color Theme', type: 'select', group: 'style', options: ['Cosmic Neon', 'Solar Flare', 'Deep Sea', 'Toxic Sludge', 'Monochrome Pro', 'Electric Orchid', 'Golden Hour', 'Ice & Fire'], def: 0 },
-  { id: 'colorShift', label: 'Color Phase', type: 'range', group: 'style', min: 0, max: 1, step: 0.01, def: 0, mutate: true },
+  // Gradient: one 256-texel LUT in the shader (engine/gradients.js); the first
+  // eight are the original cosine palettes, rebuilt exactly.
+  { id: 'palette', label: 'Gradient', type: 'select', group: 'style', options: GRADIENT_NAMES, def: 0 },
+  { id: 'colorShift', label: 'Gradient Offset', type: 'range', group: 'style', min: 0, max: 1, step: 0.01, def: 0, mutate: true },
+  { id: 'colorSource', label: 'Color Source', type: 'select', group: 'style', options: ['Orbit trap', 'Fold count (stripes)', 'Trap + folds', 'Fold amounts (continuous)'], def: 0 },
+  { id: 'foldColW', label: 'Box-Fold Color', type: 'range', group: 'style', min: 0, max: 2, step: 0.01, def: 0.25, gate: 'colorSource', gateEq: [1, 2, 3], row: 'fcol' },
+  { id: 'sphColW', label: 'Sphere-Fold Color', type: 'range', group: 'style', min: 0, max: 2, step: 0.01, def: 0.5, gate: 'colorSource', gateEq: [1, 2, 3], row: 'fcol' },
+  { id: 'colorIters', label: 'Color Iterations', type: 'range', group: 'style', min: 1, max: 40, step: 1, def: 6, int: true, hardMin: 1, gate: 'colorSource', gateEq: [1, 2, 3] },
+  { id: 'gradRepeat', label: 'Gradient Repeat', type: 'range', group: 'style', min: 0.1, max: 32, step: 0.01, def: 1, hardMin: 0.01 },
+  { id: 'gradWrap', label: 'Wrap', type: 'select', group: 'style', options: WRAP_MODES, def: 0, row: 'gradA' },
+  { id: 'gradReverse', label: 'Reverse', type: 'bool', group: 'style', def: false, row: 'gradA' },
+  { id: 'gradHue', label: 'Gradient Hue', type: 'range', group: 'style', min: -180, max: 180, step: 1, def: 0 },
+  { id: 'gradSat', label: 'Gradient Saturation', type: 'range', group: 'style', min: 0, max: 2, step: 0.01, def: 1, hardMin: 0 },
+  { id: 'gradC1', label: 'Stop 1', type: 'color', group: 'style', def: '#0b0b2b', interp: 'color', row: 'gradC', gate: 'palette', gateEq: CUSTOM_GRADIENT },
+  { id: 'gradC2', label: 'Stop 2', type: 'color', group: 'style', def: '#5e2ca5', interp: 'color', row: 'gradC', gate: 'palette', gateEq: CUSTOM_GRADIENT },
+  { id: 'gradC3', label: 'Stop 3', type: 'color', group: 'style', def: '#e0457b', interp: 'color', row: 'gradC', gate: 'palette', gateEq: CUSTOM_GRADIENT },
+  { id: 'gradC4', label: 'Stop 4', type: 'color', group: 'style', def: '#ffb347', interp: 'color', row: 'gradC2', gate: 'palette', gateEq: CUSTOM_GRADIENT },
+  { id: 'gradC5', label: 'Stop 5', type: 'color', group: 'style', def: '#fff6d5', interp: 'color', row: 'gradC2', gate: 'palette', gateEq: CUSTOM_GRADIENT },
   { id: 'lightColor', label: 'Lite Color', type: 'color', group: 'style', def: '#e6f2ff', interp: 'color', row: 'colors' },
   { id: 'bgColor', label: 'Background', type: 'color', group: 'style', def: '#010103', interp: 'color', row: 'colors' },
   { id: 'tonemap', label: 'Tone Curve', type: 'select', group: 'style', options: ['Legacy (v1 look)', 'Filmic (ACES)'], def: 0 },
