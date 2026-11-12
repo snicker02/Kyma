@@ -156,6 +156,16 @@ export function sceneUniforms(v, scaleOverride) {
     u_stepAO: v.stepAO,
     u_aoStrength: v.aoStrength,
     u_shadows: v.shadows,
+    u_groundType: v.groundType | 0,
+    u_groundY: v.groundY ?? -2,
+    u_groundCol: hexToRgb(v.groundColor || '#4a6b2e'),
+    u_groundCol2: hexToRgb(v.groundColor2 || '#8fae4a'),
+    u_groundScale: Math.max(0.01, v.groundScale ?? 1),
+    u_groundBump: v.groundBump ?? 0.3,
+    u_groundReflect: v.groundReflect ?? 0.6,
+    u_groundRough: v.groundRough ?? 0.05,
+    u_groundFade: v.groundFade ?? 0.3,
+    u_groundShadows: v.groundShadows ?? true,
     u_shadowSoft: v.shadowSoft,
   };
 }

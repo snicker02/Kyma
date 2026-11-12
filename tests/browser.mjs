@@ -307,6 +307,29 @@ ok(/\.png$/.test(png.suggestedFilename()), `image downloaded: ${png.suggestedFil
   await page.evaluate(() => { const s = window.__surf; s.seq.clear(); s.state.setMany({ recMode: 1, recRes: 0, recFps: 1, recSamples: 16, recFormat: 0, recQuality: 2 }); document.getElementById('app').classList.remove('no-left', 'no-right'); });
 }
 
+// Ground plane: picking a type in the panel loads its look; Place Under Fractal
+// puts the plane inside the object's vertical span; every mode renders it.
+{
+  const g = await page.evaluate(async () => {
+    const s = window.__surf;
+    const { BIOMES } = await import('/engine/presets.js');
+    s.state.setMany({ ...BIOMES.chalice.v, renderScale: 0.25, maxSamples: 1 });
+    s.state.set('groundType', 2, 'ui');
+    const col = s.state.values.groundColor;
+    [...document.querySelectorAll('button')].find(b => b.textContent === 'Place Under Fractal').click();
+    return { col, y: s.state.values.groundY, toast: document.getElementById('toast').textContent };
+  });
+  const m = g.toast.match(/spans (-?[\d.]+) … (-?[\d.]+)/);
+  ok(g.col === '#3d5a22' && m && g.y > +m[1] && g.y < +m[2], `ground: grass defaults ${g.col}, placed at y ${g.y} inside ${m ? m[1] + '…' + m[2] : '?'}`);
+  for (const [type, mode] of [[5, 0], [7, 1], [3, 2]]) {
+    await page.evaluate(([t, m]) => window.__surf.state.setMany({ groundType: t, renderMode: m, maxSamples: 1 }), [type, mode]);
+    await page.waitForTimeout(300);
+    const okR = await page.waitForFunction(() => window.__surf.renderer.live.samples >= 1 && !window.__surf.renderer.isCompiling(), null, { timeout: 300000 }).then(() => true).catch(() => false);
+    ok(okR, `ground type ${type} renders in mode ${mode}`);
+  }
+  await page.evaluate(() => window.__surf.state.setMany({ groundType: 0, renderMode: 0 }));
+}
+
 // Fine-tune chip on a rotation slider: window shrinks to 1/20 then 1/200, re-centres.
 await page.setViewportSize({ width: 1600, height: 900 });
 await page.evaluate(() => {

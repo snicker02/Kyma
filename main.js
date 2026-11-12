@@ -12,14 +12,14 @@ import { ZipWriter } from './engine/zip.js';
 import { gradientSpec, drawGradientPreview, GRADIENTS } from './engine/gradients.js';
 const GRADIENT_COUNT = GRADIENTS.length;
 import { VideoWriter, pickEncoder, canEncodeVideo, videoBitrate } from './engine/video.js';
-import { FOLD_NAMES, SURF_VARIANTS as SURF_VARIANT_NAMES, defaults as paramDefaults } from './engine/params.js';
+import { FOLD_NAMES, SURF_VARIANTS as SURF_VARIANT_NAMES, defaults as paramDefaults, PARAMS } from './engine/params.js';
 const PARAM_DEF = paramDefaults();
 import { VARIANT_DEFAULTS, VARIANT_DESC } from './engine/presets.js';
 import { BIOMES, evolve, rebirth, encodeDiscovery, decodeDiscovery, makeProject, parseProject } from './engine/presets.js';
 import { wrapPi, clamp } from './engine/vec.js';
 import { Panel } from './ui/panel.js';
 
-export const VERSION = '2.10.0';
+export const VERSION = '2.11.0';
 
 const $ = id => document.getElementById(id);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
@@ -186,6 +186,9 @@ resetViewBtn.addEventListener('click', () => {
 });
 panel.group('view').append(resetViewBtn);
 
+const PRESET_RESET = Object.fromEntries(PARAMS
+  .filter(p => /^(colorSource|foldColW|sphColW|colorIters|gradRepeat|gradWrap|gradReverse|gradHue|gradSat)$/.test(p.id))
+  .map(p => [p.id, p.def]));
 // Presets dropdown, grouped by engine. Picking one applies it (undoable); the
 // list then shows its name until you pick another.
 const presetSel = el('select', 'preset-select');
@@ -206,7 +209,11 @@ presetSel.addEventListener('change', () => {
   const b = BIOMES[presetSel.value];
   if (!b) return;
   pushHistory();
-  state.setMany(b.v);
+  // Colouring controls added after a preset was written would otherwise keep
+  // whatever the previous scene had (e.g. fold-count stripes leaking into
+  // Crimson Chalice), so reset them to defaults unless the preset sets them.
+  // The ground is staging and is left as you set it.
+  state.setMany({ ...PRESET_RESET, ...b.v });
   toast(`Preset: ${b.label}`);
 });
 panel.group('presets').append(presetSel);
@@ -280,6 +287,59 @@ syncFoldDesc();
 
 // ── Environment source ──────────────────────────────────────────────────────
 let envInfo = null; // { name, kind: 'preset'|'image', key?, dataUrl?, aspect }
+// ── Ground plane ─────────────────────────────────────────────────────────────
+// Picking a ground type loads that type's starting colours / terrain (undoable),
+// and "Place Under Fractal" drops the plane to the bottom of the object with
+// the base slightly sunk in, the way objects sit in a meadow or a bay.
+const GROUND_DEFAULTS = {
+  1: { groundColor: '#8a8578', groundFade: 0.2 },
+  2: { groundColor: '#3d5a22', groundColor2: '#7f9a3a', groundScale: 1, groundBump: 0.4, groundFade: 0.35 },
+  3: { groundColor: '#c9a66b', groundColor2: '#e8d3a0', groundScale: 1, groundBump: 0.6, groundFade: 0.35 },
+  4: { groundColor: '#5a5650', groundColor2: '#8a857a', groundScale: 1, groundBump: 0.8, groundFade: 0.3 },
+  5: { groundColor: '#0b2a3a', groundScale: 1, groundBump: 0.25, groundReflect: 0.9, groundRough: 0.03, groundFade: 0.3 },
+  6: { groundColor: '#ffffff', groundReflect: 0.85, groundRough: 0, groundFade: 0.2 },
+  7: { groundColor: '#2a2a2e', groundColor2: '#d8d8dc', groundScale: 1, groundFade: 0.25 },
+};
+let lastGroundType = state.values.groundType | 0;
+state.onChange((id, _v, src) => {
+  if (id !== 'groundType') return;
+  const g = state.values.groundType | 0;
+  // Only when you pick it in the panel (not presets, projects, undo or keys).
+  if (src === 'ui' && g !== lastGroundType && GROUND_DEFAULTS[g]) {
+    pushHistory();
+    state.setMany(GROUND_DEFAULTS[g]);
+  }
+  lastGroundType = g;
+});
+function groundUnderFractal() {
+  const v = state.values;
+  const map = makeDE(v);
+  const cx = v.targetX, cy = v.targetY, cz = v.targetZ;
+  const R = Math.max(0.5, v.dist * 0.45);
+  let lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < 11; i++) for (let k = 0; k < 11; k++) {
+    const x = cx + (i / 10 - 0.5) * 2 * R, z = cz + (k / 10 - 0.5) * 2 * R;
+    const up = marchInfo(map, [x, cy - 2.5 * R, z], [0, 1, 0], { ...v, maxDist: 5 * R, missAsHit: false });
+    if (up.reason === 'hit') lo = Math.min(lo, cy - 2.5 * R + up.t);
+    const dn = marchInfo(map, [x, cy + 2.5 * R, z], [0, -1, 0], { ...v, maxDist: 5 * R, missAsHit: false });
+    if (dn.reason === 'hit') hi = Math.max(hi, cy + 2.5 * R - dn.t);
+  }
+  if (!isFinite(lo)) { toast('No surface found under the view — frame the object first', 3000); return; }
+  pushHistory();
+  const y = lo + 0.08 * Math.max(0, hi - lo);
+  state.setMany({ groundY: +y.toFixed(3), groundType: (v.groundType | 0) || 2 });
+  toast(`Ground at y = ${y.toFixed(2)} (object spans ${lo.toFixed(2)} … ${hi.toFixed(2)})`, 3000);
+}
+{
+  const g = panel.group('ground');
+  const btn = el('button', 'action-btn sm', 'Place Under Fractal');
+  btn.title = 'Find the bottom of the object in view and put the ground there';
+  btn.addEventListener('click', groundUnderFractal);
+  const note = el('div', 'seq-hint', 'Grass, sand and rock are procedural textures with optional hills; water and mirror reflect the fractal. Path Traced mode gives the ground real bounce light.');
+  note.style.marginTop = '0';
+  g.append(btn, note);
+}
+
 const envGroup = panel.group('env');
 const envSrcHead = el('div', 'sub-head', '<span>Image Source</span>');
 const envSrcLabel = el('span', 'gate-badge off', 'NONE');

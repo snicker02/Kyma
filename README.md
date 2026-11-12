@@ -1,4 +1,4 @@
-# Kyma v2.10.0
+# Kyma v2.11.0
 
 **Kyma** (κῦμα, Greek for "wave") is a progressive WebGL1 raymarcher for Kali's **Amazing Surf** fractal family. It includes all nine of Mandelbulber's surf formulas, path tracing, volumetric glow and environment lighting. It has no dependencies and no build step. It was formerly *Amazing Surf*; old project files, discovery strings (`SURF2:`) and saved panel layouts still load.
 
@@ -158,6 +158,29 @@ Its built-in sphere inversion is Kyma's **Sphere Inversion** (start of iteration
 Because the sum varies smoothly over a surface, a banded gradient (Circus Stripes, Awning Teal …) wraps the shells in stripes. Keep **Color Iterations** low (3–6) so the stripes follow the big shapes.
 
 Presets: **Striped Shells**, **Ribbon Bowl** and **Ring Reliquary** in the *Amazing IFS* section of the dropdown.
+
+## Ground plane
+
+A horizontal plane at **Height** that the fractal stands on (right dock, *Ground Plane*). It is a separate surface in the ray march, not part of the formula, so it changes nothing about the fractal's shape, colour or distance estimate. It receives the fractal's shadows (**Receives Shadows**) and contact darkening (Surface AO).
+
+| Ground | What it is |
+|---|---|
+| Matte | Plain colour, for a studio floor or shadow catcher |
+| Grass | Two-colour patches with blade streaks, on rolling hills (**Terrain**) |
+| Sand | Dunes with wind ripples and grain |
+| Rock | Lumpy rock with cracks |
+| Water | Wave normals (**Waves**), Fresnel reflection of the fractal and sky, sun glint |
+| Mirror | Flat reflection, tinted by Color |
+| Checker | Studio tiles (**Texture Scale** = tile size) |
+
+- Picking a type in the panel loads its starting colours and terrain (Ctrl+Z undoes it).
+- **Place Under Fractal** finds the bottom of the object in view and sets the plane just above it, so the base sits slightly sunk in.
+- **Horizon Haze** blends the ground into the sky (or the panorama) with distance, so there's no hard edge where Max Distance ends.
+- Fine detail (blades, grain, tiles) fades out with distance to avoid shimmer.
+- In **Path Traced** mode the ground is a real material: diffuse for the textures, a rough mirror for Mirror (Reflectivity = metalness, Blur = roughness) and a Fresnel dielectric for Water. It bounces light onto the fractal.
+- In **Volumetric** mode the glow stops at the ground, which shows behind it.
+
+These are procedural textures, not geometry: grass has no individual blades, and water doesn't refract. Pair the ground with an environment panorama for a sky.
 
 ## Gradients
 

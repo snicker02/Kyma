@@ -40,6 +40,7 @@ export const GROUPS = [
   { id: 'view',    side: 'right', title: 'View & Navigation' },
   { id: 'style',   side: 'right', title: 'Color & Lens', accent: true },
   { id: 'env',     side: 'right', title: 'Environment', accent: true },
+  { id: 'ground',  side: 'right', title: 'Ground Plane', accent: true },
   { id: 'light',   side: 'right', title: 'Atmosphere & Light' },
   { id: 'seq',     side: 'right', title: 'Animation Sequencer', accent: true },
   { id: 'video',   side: 'right', title: 'Video & Frames Export' },
@@ -55,6 +56,8 @@ const V_STACK = [2, 3, 4, 6];         // fold-stack variants
 const V_ALL_BUT_KLEIN = [0, 1, 2, 3, 4, 5, 6, 7, 10]; // variants that take c (IFS only with Add c)
 
 export const FOLD_NAMES = ['Type 1 (Box)', 'Type 2', 'Type 3', 'Surf XY (Mandelbulber)', 'Tetrahedral + Box', 'Octahedral + Box', 'Icosahedral + Box', 'Polar Kaleidoscope', 'Smooth Box (tanh)', 'Abs Shift (Kali)', 'Diagonal Box'];
+
+export const GROUND_TYPES = ['Off', 'Matte', 'Grass', 'Sand', 'Rock', 'Water', 'Mirror', 'Checker'];
 
 export const PARAMS = [
   // ════ LEFT DOCK — FORMULA ════════════════════════════════════════════════
@@ -241,6 +244,17 @@ export const PARAMS = [
   { id: 'envFog', label: 'Fog Takes Image Color', type: 'bool', group: 'env', def: true },
 
   // ── Atmosphere & light ──────────────────────────────────────────────────
+  // ── Ground plane ────────────────────────────────────────────────────────
+  { id: 'groundType', label: 'Ground', type: 'select', group: 'ground', options: GROUND_TYPES, def: 0 },
+  { id: 'groundY', label: 'Height', type: 'range', group: 'ground', min: -10, max: 10, step: 0.01, def: -2, fine: true, gate: 'groundType', gateEq: [1, 2, 3, 4, 5, 6, 7] },
+  { id: 'groundColor', label: 'Color', type: 'color', group: 'ground', def: '#4a6b2e', interp: 'color', row: 'gcol', gate: 'groundType', gateEq: [1, 2, 3, 4, 5, 6, 7] },
+  { id: 'groundColor2', label: 'Color 2', type: 'color', group: 'ground', def: '#8fae4a', interp: 'color', row: 'gcol', gate: 'groundType', gateEq: [2, 3, 4, 7] },
+  { id: 'groundScale', label: 'Texture Scale', type: 'range', group: 'ground', min: 0.05, max: 10, step: 0.01, def: 1, hardMin: 0.01, gate: 'groundType', gateEq: [2, 3, 4, 5, 7] },
+  { id: 'groundBump', label: 'Terrain / Waves', type: 'range', group: 'ground', min: 0, max: 3, step: 0.01, def: 0.3, gate: 'groundType', gateEq: [2, 3, 4, 5] },
+  { id: 'groundReflect', label: 'Reflectivity', type: 'range', group: 'ground', min: 0, max: 1, step: 0.01, def: 0.6, gate: 'groundType', gateEq: [5, 6] },
+  { id: 'groundRough', label: 'Blur (path traced)', type: 'range', group: 'ground', min: 0, max: 1, step: 0.01, def: 0.05, gate: 'groundType', gateEq: [5, 6] },
+  { id: 'groundFade', label: 'Horizon Haze', type: 'range', group: 'ground', min: 0, max: 2, step: 0.01, def: 0.3, gate: 'groundType', gateEq: [1, 2, 3, 4, 5, 6, 7] },
+  { id: 'groundShadows', label: 'Receives Shadows', type: 'bool', group: 'ground', def: true, gate: 'groundType', gateEq: [1, 2, 3, 4, 5, 6, 7] },
   { id: 'lightX', label: 'LX', type: 'range', group: 'light', min: -10, max: 10, step: 0.1, def: 2, row: 'light', section: 'Light Position' },
   { id: 'lightY', label: 'LY', type: 'range', group: 'light', min: -10, max: 10, step: 0.1, def: 4, row: 'light' },
   { id: 'lightZ', label: 'LZ', type: 'range', group: 'light', min: -10, max: 10, step: 0.1, def: 3, row: 'light' },

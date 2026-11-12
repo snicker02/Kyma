@@ -617,6 +617,128 @@ float softShadow(vec3 ro, vec3 rd, float maxT, float k, float eps) {
   return clamp(res, 0.0, 1.0);
 }
 
+
+// ═══ Ground plane ══════════════════════════════════════════════════════════
+// A horizontal plane at y = u_groundY, optionally displaced into hills, dunes or
+// rock. It is a second surface in the ray march (not part of map()), so the
+// fractal's DE, colouring, normals and the CPU mirror are untouched; the ground
+// receives the fractal's shadows and contact AO through map().
+// Types: 0 off, 1 matte, 2 grass, 3 sand, 4 rock, 5 water, 6 mirror, 7 checker.
+uniform int   u_groundType;
+uniform float u_groundY;
+uniform vec3  u_groundCol;
+uniform vec3  u_groundCol2;
+uniform float u_groundScale;   // feature size of the texture and terrain
+uniform float u_groundBump;    // terrain height (water: wave strength)
+uniform float u_groundReflect; // water / mirror reflectivity
+uniform float u_groundRough;   // mirror / water blur (path tracer)
+uniform float u_groundFade;    // distance haze that melts the ground into the sky
+uniform bool  u_groundShadows;
+
+float gHash(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+float gNoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(gHash(i), gHash(i + vec2(1.0, 0.0)), u.x),
+             mix(gHash(i + vec2(0.0, 1.0)), gHash(i + vec2(1.0, 1.0)), u.x), u.y);
+}
+float gFbm(vec2 p) {
+  float s = 0.0, a = 0.5;
+  for (int i = 0; i < 4; i++) { s += a * gNoise(p); p = p * 2.03 + vec2(17.1, 9.7); a *= 0.5; }
+  return s; // ≈ 0 … 0.94, mean ≈ 0.47
+}
+
+// Terrain height above u_groundY.
+float groundHeight(vec2 xz) {
+  if (u_groundBump <= 0.0) return 0.0;
+  vec2 q = xz / u_groundScale;
+  if (u_groundType == 2) return u_groundBump * (gFbm(q * 0.25) - 0.47) * 1.5;                 // rolling hills
+  if (u_groundType == 3) return u_groundBump * ((gFbm(q * 0.2) - 0.47) * 1.2
+                                 + 0.06 * sin(dot(q, vec2(0.8, 0.6)) * 6.0 + gFbm(q * 0.5) * 4.0)); // dunes + ripples
+  if (u_groundType == 4) { float r = gFbm(q * 0.4); return u_groundBump * (r * r * 2.2 - 0.45); } // rock lumps
+  return 0.0; // matte, water (waves are in the normal), mirror, checker: flat
+}
+
+// Distance to the ground. Displaced terrain is Lipschitz-scaled so the march
+// never overshoots a slope.
+float groundDist(vec3 p) {
+  if (u_groundType == 0) return 1e9;
+  float k = u_groundBump > 0.0 && u_groundType >= 2 && u_groundType <= 4 ? 1.0 / (1.0 + 1.6 * u_groundBump / u_groundScale) : 1.0;
+  return (p.y - u_groundY - groundHeight(p.xz)) * k;
+}
+
+vec3 groundNormal(vec3 p, float t) {
+  float e = 0.01 * u_groundScale;
+  vec3 n = normalize(vec3(groundHeight(p.xz - vec2(e, 0.0)) - groundHeight(p.xz + vec2(e, 0.0)), 2.0 * e,
+                          groundHeight(p.xz - vec2(0.0, e)) - groundHeight(p.xz + vec2(0.0, e))));
+  vec2 q = p.xz / u_groundScale;
+  float far = clamp(t * 0.03 / u_groundScale, 0.0, 1.0); // fade micro-detail out with distance (no shimmer)
+  if (u_groundType == 5) {
+    // Water: two octaves of wave slopes from noise gradients.
+    vec2 w = vec2(gNoise(q * 1.7) - gNoise(q * 1.7 + vec2(0.37, 0.0)), gNoise(q * 1.7) - gNoise(q * 1.7 + vec2(0.0, 0.37)))
+           + 0.5 * vec2(gNoise(q * 5.3) - gNoise(q * 5.3 + vec2(0.21, 0.0)), gNoise(q * 5.3) - gNoise(q * 5.3 + vec2(0.0, 0.21)));
+    n = normalize(n + vec3(w.x, 0.0, w.y) * u_groundBump * 3.0 * (1.0 - 0.7 * far));
+  } else if (u_groundType == 2) {
+    // Grass: blade-scale tilt jitter.
+    vec2 j = vec2(gNoise(q * 40.0), gNoise(q * 40.0 + 7.3)) - 0.5;
+    n = normalize(n + vec3(j.x, 0.0, j.y) * 0.8 * (1.0 - far));
+  }
+  return n;
+}
+
+vec3 groundAlbedo(vec3 p, float t) {
+  vec2 q = p.xz / u_groundScale;
+  float far = clamp(t * 0.03 / u_groundScale, 0.0, 1.0);
+  if (u_groundType == 2) {
+    vec3 base = mix(u_groundCol, u_groundCol2, smoothstep(0.3, 0.75, gFbm(q * 0.6)));
+    // Blade streaks: anisotropic noise in two directions, averaged away with distance.
+    float blades = 0.5 * gNoise(q * vec2(80.0, 8.0)) + 0.5 * gNoise(q.yx * vec2(70.0, 9.0) + 3.1);
+    blades = mix(blades, 0.5, far);
+    return base * (0.45 + 1.1 * blades);
+  }
+  if (u_groundType == 3) {
+    float rip = 0.5 + 0.5 * sin(dot(q, vec2(0.8, 0.6)) * 18.0 + gFbm(q * 0.8) * 6.0);
+    float grain = mix(gNoise(q * 120.0), 0.5, far);
+    return mix(u_groundCol, u_groundCol2, 0.35 * rip + 0.3 * gFbm(q * 0.3)) * (0.85 + 0.3 * grain);
+  }
+  if (u_groundType == 4) {
+    float m = gFbm(q * 2.0);
+    float crack = smoothstep(0.02, 0.0, abs(gNoise(q * 6.0) - 0.5)) * (1.0 - far);
+    return mix(u_groundCol, u_groundCol2, smoothstep(0.35, 0.7, m)) * (1.0 - 0.6 * crack);
+  }
+  if (u_groundType == 7) {
+    vec2 c = floor(q);
+    float k = mod(c.x + c.y, 2.0);
+    return mix(mix(u_groundCol, u_groundCol2, k), 0.5 * (u_groundCol + u_groundCol2), far);
+  }
+  return u_groundCol; // matte, water body colour, mirror tint
+}
+
+// Ground reflectivity at this view angle: water follows Fresnel, mirror is flat.
+float groundReflectance(vec3 n, vec3 rd) {
+  if (u_groundType == 5) return u_groundReflect * (0.02 + 0.98 * pow(1.0 - max(dot(n, -rd), 0.0), 5.0));
+  if (u_groundType == 6) return u_groundReflect;
+  return 0.0;
+}
+
+// Fractal-only march used by ground reflections.
+bool marchFractal(vec3 ro, vec3 rd, out float t, out float trap) {
+  float eps0 = 0.0003 / u_detail;
+  t = 0.0; trap = 0.0;
+  for (int i = 0; i < 1024; i++) {
+    if (i >= u_maxSteps) return false;
+    float d = map(ro + rd * t, trap);
+    if (d < eps0 * (1.0 + t * 0.1)) return true;
+    t += d * u_stepFactor;
+    if (t > u_maxDist) return false;
+  }
+  return false;
+}
+
 // One gradient period spans the LUT; u_gradScale folds in the gradient's
 // natural band width, Repeat and Mirror. Sampled at the texel centre row.
 vec3 palette(float idx) {
@@ -650,6 +772,49 @@ vec3 envBackground(vec3 rd, vec2 screenUv) {
     return envTex(uv, u_envBlur).rgb * u_envIntensity;
   }
   return envDir(rd, u_envBlur) * u_envIntensity;
+}
+
+
+// Sky seen in a direction (for reflections and the horizon haze).
+vec3 skyColor(vec3 d) {
+  return u_envMode == 2 ? envDir(d, u_envBlur) * u_envIntensity : u_bgColor;
+}
+
+// Surface-mode ground shading: textured albedo, light with the fractal's shadow
+// and contact AO, environment light, reflections of the fractal and sky for
+// water / mirror, then a distance haze into the sky so there is no hard horizon.
+vec3 shadeGround(vec3 p, vec3 rd, float t, vec3 bg) {
+  vec3 n = groundNormal(p, t);
+  vec3 alb = groundAlbedo(p, t);
+  float eN = 0.0004 * (1.0 + t * 0.1) / u_detail;
+  vec3 toL = u_lightPos - p;
+  float lightDist = length(toL);
+  vec3 L = toL / lightDist;
+  float diff = max(dot(n, L), 0.0);
+  float sh = 1.0;
+  if (u_groundShadows && diff > 0.0) sh = softShadow(p + n * eN * 4.0, L, min(lightDist, 30.0), u_shadowSoft, eN);
+  float ao = u_aoStrength > 0.0 ? mix(1.0, surfaceAO(p, n, 1.0 + t * 0.05), u_aoStrength) : 1.0;
+  vec3 col = alb * (diff * sh + u_ambient) * ao;
+  if (u_envMode > 0) col += alb * envDir(n, 6.0) * u_envLight * ao;
+
+  float refl = groundReflectance(n, rd);
+  if (refl > 0.0) {
+    vec3 R = reflect(rd, n);
+    if (R.y < 0.02) R.y = 0.02; // waves can tilt the reflection under the plane
+    R = normalize(R);
+    vec3 rc = skyColor(R);
+    float tr, trap;
+    if (marchFractal(p + n * eN * 6.0, R, tr, trap)) {
+      vec3 q = p + n * eN * 6.0 + R * tr;
+      vec3 fn = getNormal(q, 0.0004 * (1.0 + tr * 0.1) / u_detail);
+      vec3 fl = normalize(u_lightPos - q);
+      rc = palette(trap * 0.4 + u_colorShift * 10.0) * (max(dot(fn, fl), 0.0) + u_ambient)
+         + pow(max(dot(reflect(R, fn), fl), 0.0), 32.0) * 0.4 * u_lightColor;
+    }
+    col = mix(col, rc * mix(vec3(1.0), alb, u_groundType == 6 ? 0.5 : 0.0), refl);
+    col += pow(max(dot(reflect(rd, n), L), 0.0), 120.0) * sh * u_lightColor * refl * 2.0; // sun glint
+  }
+  return mix(col, bg, 1.0 - exp(-u_groundFade * t * 0.05));
 }
 
 vec3 heat(float x) {
@@ -712,12 +877,15 @@ void main() {
 
   float eps0 = 0.0003 / u_detail;
   float t = 0.0, trap = 0.0, steps = 0.0, vol = 0.0;
-  bool hit = false, exhausted = true;
+  bool hit = false, exhausted = true, onGround = false;
 
   for (int i = 0; i < 1024; i++) {
     if (i >= u_maxSteps) break;
     vec3 p = ro + rd * t;
     float d = map(p, trap);
+    float dg = groundDist(p);
+    onGround = dg < d;
+    d = min(d, dg);
     if (u_volumetric > 0.0) {
       vec3 dl = u_lightPos - p;
       float scatter = 1.0 / (1.0 + dot(dl, dl) * 2.0);
@@ -732,6 +900,7 @@ void main() {
   // the DE plateaus above the hit threshold: optionally shade it as surface.
   bool stranded = !hit && exhausted;
   if (stranded && u_missAsHit) hit = true;
+  if (!hit) onGround = false;
 
   if (u_debugView == 1) {
     vec3 hc = heat(steps / float(u_maxSteps));
@@ -742,7 +911,11 @@ void main() {
 
   vec3 bg = u_envMode > 0 ? envBackground(rd, screenUv) : u_bgColor;
   vec3 col = bg;
-  if (hit) {
+  if (hit && onGround) {
+    col = shadeGround(ro + rd * t, rd, t, bg);
+    vec3 fogColG = (u_envMode > 0 && u_envFog) ? bg : u_bgColor;
+    col = mix(col, fogColG, 1.0 - exp(-u_fog * t * 0.1));
+  } else if (hit) {
     vec3 p = ro + rd * t;
     float eN = 0.0004 * (1.0 + t * 0.1) / u_detail;
     vec3 n = getNormal(p, eN);
@@ -818,12 +991,17 @@ vec3 cosineDir(vec3 n) {
 }
 vec3 toLin(vec3 c) { return pow(max(c, vec3(0.0)), vec3(2.2)); }
 
+bool g_onGround;
 bool traceHit(vec3 ro, vec3 rd, out float t, out float trap) {
   float eps0 = 0.0003 / u_detail;
-  t = 0.0; trap = 0.0;
+  t = 0.0; trap = 0.0; g_onGround = false;
   for (int i = 0; i < 1024; i++) {
     if (i >= u_maxSteps) return u_missAsHit;
-    float d = map(ro + rd * t, trap);
+    vec3 p = ro + rd * t;
+    float d = map(p, trap);
+    float dg = groundDist(p);
+    g_onGround = dg < d;
+    d = min(d, dg);
     if (d < eps0 * (1.0 + t * 0.1)) return true;
     t += d * u_stepFactor;
     if (t > u_maxDist) return false;
@@ -856,6 +1034,7 @@ void main() {
   vec3 bgPrimary = toLin(u_envMode > 0 ? envBackground(rd, screenUv) : u_bgColor);
   vec3 acc = vec3(0.0), thr = vec3(1.0);
   float tPrimary = -1.0;
+  bool primaryGround = false;
   vec3 lightCol = toLin(u_lightColor) * u_ptSun;
 
   for (int b = 0; b < 7; b++) {
@@ -865,16 +1044,26 @@ void main() {
       acc += thr * (b == 0 ? bgPrimary : skyLight(rd));
       break;
     }
-    if (b == 0) tPrimary = t;
+    if (b == 0) { tPrimary = t; primaryGround = g_onGround; }
     vec3 p = ro + rd * t;
     float eN = 0.0004 * (1.0 + t * 0.1) / u_detail;
-    vec3 n = getNormal(p, eN);
+    // Material: the fractal uses the Path Tracing sliders; the ground its own.
+    vec3 n, albedo;
+    float metal = u_ptMetal, rough = u_ptRough;
+    if (g_onGround) {
+      n = groundNormal(p, t);
+      albedo = toLin(groundAlbedo(p, t));
+      if (u_groundType == 6) { metal = u_groundReflect; rough = u_groundRough; }
+      else if (u_groundType == 5) { metal = 0.0; rough = u_groundRough; albedo *= 1.0 - u_groundReflect * 0.7; }
+      else { metal = 0.0; rough = 1.0; }
+    } else {
+      n = getNormal(p, eN);
+      albedo = toLin(palette(trap * 0.4 + u_colorShift * 10.0));
+      acc += thr * albedo * u_ptEmit * exp(-trap * 4.0);
+    }
     if (dot(n, rd) > 0.0) n = -n;
-    vec3 albedo = toLin(palette(trap * 0.4 + u_colorShift * 10.0));
 
-    acc += thr * albedo * u_ptEmit * exp(-trap * 4.0);
-
-    vec3 F0 = mix(vec3(0.04), albedo, u_ptMetal);
+    vec3 F0 = mix(vec3(u_groundType == 5 && g_onGround ? 0.02 : 0.04), albedo, metal);
     vec3 fres = F0 + (1.0 - F0) * pow(1.0 - max(dot(n, -rd), 0.0), 5.0);
 
     // Next-event estimation: one shadow ray to a random point on the light sphere.
@@ -886,23 +1075,23 @@ void main() {
     if (ndl > 0.0) {
       float vis = shadowVis(p + n * eN * 2.0, l, ld, eN);
       if (vis > 0.0) {
-        float shin = 2.0 / max(u_ptRough * u_ptRough, 0.002);
-        vec3 diffW = albedo * (1.0 - u_ptMetal) * (1.0 - fres);
+        float shin = 2.0 / max(rough * rough, 0.002);
+        vec3 diffW = albedo * (1.0 - metal) * (1.0 - fres);
         vec3 specW = fres * pow(max(dot(reflect(rd, n), l), 0.0), shin) * (shin + 2.0) * 0.125;
         acc += thr * (diffW + specW) * ndl * lightCol;
       }
     }
 
     // Choose the next bounce lobe.
-    float pSpec = clamp(dot(fres, vec3(0.3333)) * (1.0 - 0.5 * u_ptRough) + 0.5 * u_ptMetal, 0.05, 0.95);
+    float pSpec = clamp(dot(fres, vec3(0.3333)) * (1.0 - 0.5 * rough) + 0.5 * metal, 0.05, 0.95);
     vec3 nd;
     if (rnd() < pSpec) {
-      nd = normalize(reflect(rd, n) + randomSphere() * u_ptRough);
+      nd = normalize(reflect(rd, n) + randomSphere() * rough);
       if (dot(nd, n) <= 0.0) break;
       thr *= fres / pSpec;
     } else {
       nd = cosineDir(n);
-      thr *= albedo * (1.0 - u_ptMetal) * (1.0 - fres) / (1.0 - pSpec);
+      thr *= albedo * (1.0 - metal) * (1.0 - fres) / (1.0 - pSpec);
     }
     if (b >= 2) {
       float q = clamp(max(thr.x, max(thr.y, thr.z)), 0.05, 1.0);
@@ -915,6 +1104,7 @@ void main() {
 
   vec3 col = acc;
   if (tPrimary > 0.0) {
+    if (primaryGround) col = mix(col, bgPrimary, 1.0 - exp(-u_groundFade * tPrimary * 0.05)); // horizon haze
     vec3 fogCol = (u_envMode > 0 && u_envFog) ? bgPrimary : toLin(u_bgColor);
     col = mix(col, fogCol, 1.0 - exp(-u_fog * tPrimary * 0.1));
   }
@@ -937,10 +1127,28 @@ void main() {
   primaryRay(ro, rd, pix, screenUv);
   vec3 bg = u_envMode > 0 ? envBackground(rd, screenUv) : u_bgColor;
 
+  // Ground: find it first (its own cheap march), then integrate the glow only
+  // up to it and show the lit ground behind the glow.
+  float tG = 1e9;
+  if (u_groundType > 0) {
+    float tg = 0.0;
+    for (int i = 0; i < 160; i++) {
+      float dg = groundDist(ro + rd * tg);
+      if (dg < 0.001 * (1.0 + tg * 0.1)) { tG = tg; break; }
+      tg += dg;
+      if (tg > u_maxDist) break;
+    }
+    if (tG < 1e8) {
+      vec3 gp = ro + rd * tG;
+      vec3 gn = groundNormal(gp, tG);
+      float gd = max(dot(gn, normalize(u_lightPos - gp)), 0.0);
+      bg = mix(groundAlbedo(gp, tG) * (gd + u_ambient), bg, 1.0 - exp(-u_groundFade * tG * 0.05));
+    }
+  }
   float T = 1.0, t = u_volStepMin * fract(hash22(pix + u_sampleIndex * 0.6180339).x + u_sampleIndex * 0.7548777);
   vec3 L = vec3(0.0);
   for (int i = 0; i < 1024; i++) {
-    if (i >= u_volSteps || t > u_maxDist || T < 0.005) break;
+    if (i >= u_volSteps || t > min(u_maxDist, tG) || T < 0.005) break;
     vec3 p = ro + rd * t;
     float trap;
     float d = map(p, trap);
