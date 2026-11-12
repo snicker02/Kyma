@@ -66,6 +66,7 @@ void main() { float tr; float d = map(u_p, tr); gl_FragColor = pack(clamp(d / 16
     ['kleinV2 poly', { ...VARIANT_DEFAULTS[9], surfVariant: 9, vPolyOn: true, polarN: 5, vOffX: 0.2, vKleinIters: 6, vTailScale: 1.8 }],
     ['hybrid 3+8/3', { foldType: 3, foldType2: 9, hybridPeriod: 3, foldZ: 0.5 }],
     ['ifs fold+poly', { ...VARIANT_DEFAULTS[10], surfVariant: 10, vIfsX: 1, vIfsY: 1, vIfsZ: 2, vIfsOffX: 0.6, vIfsOffY: 0.3, vIfsOffZ: -0.2, vPreAbsZ: true, vPolyOn: true, polarN: 5, vZFold: true, vIfsAddY: 0.1, alpha: 0.3 }],
+    ['object xform', { objX: 0.4, objY: -0.3, objZ: 0.2, objRotX: 20, objRotY: -35, objRotZ: 10, objScale: 1.3 }],
     ['ifs minDE+c', { ...VARIANT_DEFAULTS[10], surfVariant: 10, vIfsX: 1, vIfsY: 1, vIfsOffX: 0.4, vIfsOffY: 0.4, vMinDE: true, vAddC: true, juliaCX: 0.2, juliaCY: -0.3, juliaCZ: 0.1, scaleVary: 0.2, vDEOffset: 0.5 }]];
   const report = [];
   for (const [name, o] of sets) {

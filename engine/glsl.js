@@ -302,7 +302,7 @@ const FRAG_TAIL = `
 // scale factor (e.g. |m| when Influence ≠ 1) the true applied factor is used.
 // The app-level transforms — inversion, axis swap, pre-rotation, spin — wrap
 // every variant.
-float map(vec3 p, out float trap) {
+float mapLocal(vec3 p, out float trap) {
   g_boxCol = 0.0;
   g_sphCol = 0.0;
   g_boxAmt = 0.0;
@@ -580,6 +580,16 @@ float map(vec3 p, out float trap) {
   return 0.5 * length(z) / abs(dr);
 }
 
+// Object transform: the fractal is evaluated in its own frame, so it can be
+// moved, turned and scaled without touching the camera, light or ground.
+// Rigid motion keeps the DE exact; uniform scale multiplies it back out.
+uniform mat3  u_objInv;   // local-from-world rotation (transpose of the object's)
+uniform vec3  u_objPos;
+uniform float u_objScale;
+float map(vec3 p, out float trap) {
+  return mapLocal(u_objInv * (p - u_objPos) / u_objScale, trap) * u_objScale;
+}
+
 // Tetrahedral normal: 4 DE evaluations instead of 6.
 vec3 getNormal(vec3 p, float e) {
   float tr;
@@ -634,6 +644,14 @@ uniform float u_groundReflect; // water / mirror reflectivity
 uniform float u_groundRough;   // mirror / water blur (path tracer)
 uniform float u_groundFade;    // distance haze that melts the ground into the sky
 uniform bool  u_groundShadows;
+uniform mat3  u_groundRot;     // ground-local from world (tilt + texture yaw)
+uniform mat3  u_groundRotInv;  // world from ground-local
+uniform vec2  u_groundOff;     // slides terrain and texture across the plane
+vec3 groundLocal(vec3 p) {
+  vec3 q = u_groundRot * (p - vec3(0.0, u_groundY, 0.0));
+  q.xz += u_groundOff;
+  return q;
+}
 
 float gHash(vec2 p) {
   vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -668,10 +686,12 @@ float groundHeight(vec2 xz) {
 float groundDist(vec3 p) {
   if (u_groundType == 0) return 1e9;
   float k = u_groundBump > 0.0 && u_groundType >= 2 && u_groundType <= 4 ? 1.0 / (1.0 + 1.6 * u_groundBump / u_groundScale) : 1.0;
-  return (p.y - u_groundY - groundHeight(p.xz)) * k;
+  vec3 q = groundLocal(p);
+  return (q.y - groundHeight(q.xz)) * k;
 }
 
-vec3 groundNormal(vec3 p, float t) {
+vec3 groundNormal(vec3 pw, float t) {
+  vec3 p = groundLocal(pw);
   float e = 0.01 * u_groundScale;
   vec3 n = normalize(vec3(groundHeight(p.xz - vec2(e, 0.0)) - groundHeight(p.xz + vec2(e, 0.0)), 2.0 * e,
                           groundHeight(p.xz - vec2(0.0, e)) - groundHeight(p.xz + vec2(0.0, e))));
@@ -687,11 +707,11 @@ vec3 groundNormal(vec3 p, float t) {
     vec2 j = vec2(gNoise(q * 40.0), gNoise(q * 40.0 + 7.3)) - 0.5;
     n = normalize(n + vec3(j.x, 0.0, j.y) * 0.8 * (1.0 - far));
   }
-  return n;
+  return normalize(u_groundRotInv * n);
 }
 
-vec3 groundAlbedo(vec3 p, float t) {
-  vec2 q = p.xz / u_groundScale;
+vec3 groundAlbedo(vec3 pw, float t) {
+  vec2 q = groundLocal(pw).xz / u_groundScale;
   float far = clamp(t * 0.03 / u_groundScale, 0.0, 1.0);
   if (u_groundType == 2) {
     vec3 base = mix(u_groundCol, u_groundCol2, smoothstep(0.3, 0.75, gFbm(q * 0.6)));
@@ -800,7 +820,9 @@ vec3 shadeGround(vec3 p, vec3 rd, float t, vec3 bg) {
   float refl = groundReflectance(n, rd);
   if (refl > 0.0) {
     vec3 R = reflect(rd, n);
-    if (R.y < 0.02) R.y = 0.02; // waves can tilt the reflection under the plane
+    vec3 gUp = u_groundRotInv * vec3(0.0, 1.0, 0.0);
+    float below = dot(R, gUp);
+    if (below < 0.02) R += gUp * (0.02 - below); // waves can tilt the reflection under the plane
     R = normalize(R);
     vec3 rc = skyColor(R);
     float tr, trap;

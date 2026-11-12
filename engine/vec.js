@@ -46,6 +46,20 @@ export function fractalRotation(alpha, beta, gamma) {
   return mat3Mul(mat3Mul(mx, my), mz);
 }
 
+export const transpose3 = m => [m[0], m[3], m[6], m[1], m[4], m[7], m[2], m[5], m[8]];
+const DEG = Math.PI / 180;
+// Object / ground orientation from yaw (Y), pitch (X), roll (Z) in degrees:
+// world-from-local R = Ry · Rx · Rz.
+export const eulerDeg = (x, y, z) => mat3Mul(mat3Mul(rotY((y || 0) * DEG), rotX((x || 0) * DEG)), rotZ((z || 0) * DEG));
+// Fractal object placement: position, rotation (deg) and uniform scale.
+export function objectTransform(v) {
+  const s = v.objScale ?? 1;
+  const pos = [v.objX || 0, v.objY || 0, v.objZ || 0];
+  const R = eulerDeg(v.objRotX, v.objRotY, v.objRotZ);
+  const identity = s === 1 && !pos[0] && !pos[1] && !pos[2] && !v.objRotX && !v.objRotY && !v.objRotZ;
+  return { s, pos, R, inv: transpose3(R), identity };
+}
+
 export const hexToRgb = h => [
   parseInt(h.slice(1, 3), 16) / 255,
   parseInt(h.slice(3, 5), 16) / 255,

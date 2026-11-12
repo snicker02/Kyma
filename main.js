@@ -19,7 +19,7 @@ import { BIOMES, evolve, rebirth, encodeDiscovery, decodeDiscovery, makeProject,
 import { wrapPi, clamp } from './engine/vec.js';
 import { Panel } from './ui/panel.js';
 
-export const VERSION = '2.11.0';
+export const VERSION = '2.12.0';
 
 const $ = id => document.getElementById(id);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
@@ -311,7 +311,9 @@ state.onChange((id, _v, src) => {
   }
   lastGroundType = g;
 });
-function groundUnderFractal() {
+// Vertical extent of the fractal around the view target (CPU DE, including the
+// object transform): vertical rays up from below and down from above.
+function objectSpan() {
   const v = state.values;
   const map = makeDE(v);
   const cx = v.targetX, cy = v.targetY, cz = v.targetZ;
@@ -324,7 +326,12 @@ function groundUnderFractal() {
     const dn = marchInfo(map, [x, cy + 2.5 * R, z], [0, -1, 0], { ...v, maxDist: 5 * R, missAsHit: false });
     if (dn.reason === 'hit') hi = Math.max(hi, cy + 2.5 * R - dn.t);
   }
-  if (!isFinite(lo)) { toast('No surface found under the view — frame the object first', 3000); return; }
+  return isFinite(lo) ? { lo, hi } : null;
+}
+function groundUnderFractal() {
+  const span = objectSpan();
+  if (!span) { toast('No surface found under the view — frame the object first', 3000); return; }
+  const { lo, hi } = span, v = state.values;
   pushHistory();
   const y = lo + 0.08 * Math.max(0, hi - lo);
   state.setMany({ groundY: +y.toFixed(3), groundType: (v.groundType | 0) || 2 });
@@ -335,9 +342,39 @@ function groundUnderFractal() {
   const btn = el('button', 'action-btn sm', 'Place Under Fractal');
   btn.title = 'Find the bottom of the object in view and put the ground there';
   btn.addEventListener('click', groundUnderFractal);
+  const reset = el('button', 'action-btn sm', 'Level Plane');
+  reset.title = 'Zero the tilt, spin and slide';
+  reset.addEventListener('click', () => { pushHistory(); state.setMany({ groundTiltX: 0, groundTiltZ: 0, groundYaw: 0, groundOffX: 0, groundOffZ: 0 }); });
+  const row = el('div', 'grid grid-2');
+  row.append(btn, reset);
   const note = el('div', 'seq-hint', 'Grass, sand and rock are procedural textures with optional hills; water and mirror reflect the fractal. Path Traced mode gives the ground real bounce light.');
   note.style.marginTop = '0';
-  g.append(btn, note);
+  g.append(row, note);
+}
+
+// Object transform buttons: drop the object onto the ground (keeps the plane
+// where it is) and reset.
+{
+  const g = panel.group('object');
+  const drop = el('button', 'action-btn sm', 'Drop onto Ground');
+  drop.title = 'Move the object up or down so its base sits just into the ground plane';
+  drop.addEventListener('click', () => {
+    const v = state.values;
+    if (!(v.groundType | 0)) { toast('Turn on a ground first (Ground Plane panel)', 2500); return; }
+    const span = objectSpan();
+    if (!span) { toast('No surface found near the view target', 2500); return; }
+    pushHistory();
+    const sink = 0.08 * Math.max(0, span.hi - span.lo);
+    state.set('objY', +(v.objY + (v.groundY - sink) - span.lo).toFixed(3));
+    toast('Object dropped onto the ground', 1800);
+  });
+  const reset = el('button', 'action-btn sm', 'Reset Object');
+  reset.addEventListener('click', () => { pushHistory(); state.setMany({ objX: 0, objY: 0, objZ: 0, objRotX: 0, objRotY: 0, objRotZ: 0, objScale: 1 }); });
+  const row = el('div', 'grid grid-2');
+  row.append(drop, reset);
+  const note = el('div', 'seq-hint', 'Moves, turns and scales the fractal itself. The camera, light and ground stay put; the formula and colours are unchanged.');
+  note.style.marginTop = '0';
+  g.append(row, note);
 }
 
 const envGroup = panel.group('env');

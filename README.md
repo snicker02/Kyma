@@ -1,4 +1,4 @@
-# Kyma v2.11.0
+# Kyma v2.12.0
 
 **Kyma** (κῦμα, Greek for "wave") is a progressive WebGL1 raymarcher for Kali's **Amazing Surf** fractal family. It includes all nine of Mandelbulber's surf formulas, path tracing, volumetric glow and environment lighting. It has no dependencies and no build step. It was formerly *Amazing Surf*; old project files, discovery strings (`SURF2:`) and saved panel layouts still load.
 
@@ -179,6 +179,16 @@ A horizontal plane at **Height** that the fractal stands on (right dock, *Ground
 - Fine detail (blades, grain, tiles) fades out with distance to avoid shimmer.
 - In **Path Traced** mode the ground is a real material: diffuse for the textures, a rough mirror for Mirror (Reflectivity = metalness, Blur = roughness) and a Fresnel dielectric for Water. It bounces light onto the fractal.
 - In **Volumetric** mode the glow stops at the ground, which shows behind it.
+
+**Plane Orientation** tilts the plane (**Tilt X / Tilt Z**, ±45°) about the point under the origin, at **Height**. **Spin** turns the texture and terrain, and **Slide X / Z** moves them across the plane, which is useful for finding a nicer patch of dunes or waves. **Level Plane** zeroes all five.
+
+## Object transform
+
+The *Object Transform* panel (right dock) moves the fractal itself: **Position** X/Y/Z, **Rotation** (pitch, yaw, roll in degrees) and **Object Scale**. The camera, light and ground don't move.
+
+- The formula is evaluated in the object's own frame. Rotating and moving keep the distance estimate exact, and scale multiplies it back out, so the shape, colours and cut-off behaviour are unchanged. The test suite checks DE(pos + s·R·q) = s·DE(q), and the GPU matches the CPU to 0.0001%.
+- **Drop onto Ground** moves the object up or down so its base sits just into the ground plane, leaving the plane where it is. **Place Under Fractal** in the Ground panel does the reverse and moves the plane. **Reset Object** returns to the origin.
+- Every transform value can be keyframed, so the sequencer can turn an object on a still plane, or hold the object while the plane tilts.
 
 These are procedural textures, not geometry: grass has no individual blades, and water doesn't refract. Pair the ground with an environment panorama for a sky.
 

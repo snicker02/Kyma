@@ -38,6 +38,7 @@ export const GROUPS = [
 
   { id: 'render',  side: 'right', title: 'Render Mode', accent: true, open: true },
   { id: 'view',    side: 'right', title: 'View & Navigation' },
+  { id: 'object',  side: 'right', title: 'Object Transform' },
   { id: 'style',   side: 'right', title: 'Color & Lens', accent: true },
   { id: 'env',     side: 'right', title: 'Environment', accent: true },
   { id: 'ground',  side: 'right', title: 'Ground Plane', accent: true },
@@ -244,6 +245,15 @@ export const PARAMS = [
   { id: 'envFog', label: 'Fog Takes Image Color', type: 'bool', group: 'env', def: true },
 
   // ── Atmosphere & light ──────────────────────────────────────────────────
+  // ── Object transform: moves the fractal, not the camera / light / ground ──
+  { id: 'objX', label: 'X', type: 'range', group: 'object', min: -10, max: 10, step: 0.01, def: 0, row: 'opos', section: 'Position', fine: true },
+  { id: 'objY', label: 'Y', type: 'range', group: 'object', min: -10, max: 10, step: 0.01, def: 0, row: 'opos', fine: true },
+  { id: 'objZ', label: 'Z', type: 'range', group: 'object', min: -10, max: 10, step: 0.01, def: 0, row: 'opos', fine: true },
+  { id: 'objRotX', label: 'Pitch', type: 'range', group: 'object', min: -180, max: 180, step: 0.1, def: 0, row: 'orot', section: 'Rotation (degrees)', fine: true },
+  { id: 'objRotY', label: 'Yaw', type: 'range', group: 'object', min: -180, max: 180, step: 0.1, def: 0, row: 'orot', fine: true },
+  { id: 'objRotZ', label: 'Roll', type: 'range', group: 'object', min: -180, max: 180, step: 0.1, def: 0, row: 'orot', fine: true },
+  { id: 'objScale', label: 'Object Scale', type: 'range', group: 'object', min: 0.1, max: 5, step: 0.01, def: 1, hardMin: 0.01, fine: true },
+
   // ── Ground plane ────────────────────────────────────────────────────────
   { id: 'groundType', label: 'Ground', type: 'select', group: 'ground', options: GROUND_TYPES, def: 0 },
   { id: 'groundY', label: 'Height', type: 'range', group: 'ground', min: -10, max: 10, step: 0.01, def: -2, fine: true, gate: 'groundType', gateEq: [1, 2, 3, 4, 5, 6, 7] },
@@ -253,6 +263,11 @@ export const PARAMS = [
   { id: 'groundBump', label: 'Terrain / Waves', type: 'range', group: 'ground', min: 0, max: 3, step: 0.01, def: 0.3, gate: 'groundType', gateEq: [2, 3, 4, 5] },
   { id: 'groundReflect', label: 'Reflectivity', type: 'range', group: 'ground', min: 0, max: 1, step: 0.01, def: 0.6, gate: 'groundType', gateEq: [5, 6] },
   { id: 'groundRough', label: 'Blur (path traced)', type: 'range', group: 'ground', min: 0, max: 1, step: 0.01, def: 0.05, gate: 'groundType', gateEq: [5, 6] },
+  { id: 'groundTiltX', label: 'Tilt X', type: 'range', group: 'ground', min: -45, max: 45, step: 0.1, def: 0, row: 'gtilt', section: 'Plane Orientation (degrees)', fine: true, gate: 'groundType', gateEq: [1, 2, 3, 4, 5, 6, 7] },
+  { id: 'groundTiltZ', label: 'Tilt Z', type: 'range', group: 'ground', min: -45, max: 45, step: 0.1, def: 0, row: 'gtilt', fine: true, gate: 'groundType', gateEq: [1, 2, 3, 4, 5, 6, 7] },
+  { id: 'groundYaw', label: 'Spin', type: 'range', group: 'ground', min: -180, max: 180, step: 0.1, def: 0, row: 'gtilt', fine: true, gate: 'groundType', gateEq: [1, 2, 3, 4, 5, 6, 7] },
+  { id: 'groundOffX', label: 'Slide X', type: 'range', group: 'ground', min: -20, max: 20, step: 0.01, def: 0, row: 'goff', gate: 'groundType', gateEq: [1, 2, 3, 4, 5, 6, 7] },
+  { id: 'groundOffZ', label: 'Slide Z', type: 'range', group: 'ground', min: -20, max: 20, step: 0.01, def: 0, row: 'goff', gate: 'groundType', gateEq: [1, 2, 3, 4, 5, 6, 7] },
   { id: 'groundFade', label: 'Horizon Haze', type: 'range', group: 'ground', min: 0, max: 2, step: 0.01, def: 0.3, gate: 'groundType', gateEq: [1, 2, 3, 4, 5, 6, 7] },
   { id: 'groundShadows', label: 'Receives Shadows', type: 'bool', group: 'ground', def: true, gate: 'groundType', gateEq: [1, 2, 3, 4, 5, 6, 7] },
   { id: 'lightX', label: 'LX', type: 'range', group: 'light', min: -10, max: 10, step: 0.1, def: 2, row: 'light', section: 'Light Position' },

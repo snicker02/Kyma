@@ -15,7 +15,7 @@ import { VERT, DISPLAY_FRAG, fractalFrag } from './glsl.js';
 import { compileProgram, finishProgram, setUniforms, detectAccumFormat, createTarget, deleteTarget } from './gl.js';
 import { cameraBasis, lightWorldPos } from './camera.js';
 import { gradientSpec, gradientKey, gradientScale, buildGradientLUT, LUT_SIZE } from './gradients.js';
-import { fractalRotation, mat3ToColumnMajor, hexToRgb, fract, mat3Mul, rotX, rotY } from './vec.js';
+import { fractalRotation, mat3ToColumnMajor, hexToRgb, fract, mat3Mul, rotX, rotY, objectTransform, eulerDeg, transpose3 } from './vec.js';
 
 // Panorama orientation: yaw about Y, then pitch about X.
 export const envRotation = (yaw, pitch) => mat3Mul(rotX(pitch), rotY(yaw));
@@ -41,6 +41,7 @@ export function lensFor(n) { return [halton(n + 1, 2), halton(n + 1, 3)]; }
 export function sceneUniforms(v, scaleOverride) {
   const cam = cameraBasis(v);
   const gspec = gradientSpec(v);
+  const objT = objectTransform(v);
   return {
     __foldA: v.foldType,
     __foldB: v.foldType2 - 1,
@@ -166,6 +167,13 @@ export function sceneUniforms(v, scaleOverride) {
     u_groundRough: v.groundRough ?? 0.05,
     u_groundFade: v.groundFade ?? 0.3,
     u_groundShadows: v.groundShadows ?? true,
+    // Ground frame: local-from-world = (Ry(yaw)·Rx(tiltX)·Rz(tiltZ))ᵀ.
+    u_groundRot: mat3ToColumnMajor(transpose3(eulerDeg(v.groundTiltX, v.groundYaw, v.groundTiltZ))),
+    u_groundRotInv: mat3ToColumnMajor(eulerDeg(v.groundTiltX, v.groundYaw, v.groundTiltZ)),
+    u_groundOff: [v.groundOffX || 0, v.groundOffZ || 0],
+    u_objInv: mat3ToColumnMajor(objT.inv),
+    u_objPos: objT.pos,
+    u_objScale: objT.s,
     u_shadowSoft: v.shadowSoft,
   };
 }

@@ -475,6 +475,27 @@ section('amazing ifs vs Mandelbulber reference');
   ok(worstMin < 1e-7, `Amazing IFS smooth (min) DE matches aux.dist (worst rel ${worstMin.toExponential(1)})`);
 }
 
+section('object transform');
+{
+  const { PARAMS } = await import('../engine/params.js');
+  const defs = Object.fromEntries(PARAMS.map(p => [p.id, p.def]));
+  const { eulerDeg, mat3MulVec } = await import('../engine/vec.js');
+  const base = { ...defs };
+  const xf = { ...defs, objX: 0.7, objY: -0.4, objZ: 1.1, objRotX: 25, objRotY: -40, objRotZ: 15, objScale: 1.7 };
+  const m0 = makeDE(base), m1 = makeDE(xf);
+  const R = eulerDeg(25, -40, 15);
+  let worst = 0;
+  for (let i = 0; i < 200; i++) {
+    const q = [Math.sin(i * 1.3) * 2, Math.cos(i * 0.7) * 2, Math.sin(i * 2.1) * 2];
+    // Placing local point q at world p = pos + s·R·q must give s × the untransformed DE.
+    const p = mat3MulVec(R, q).map((x, k) => x * 1.7 + [0.7, -0.4, 1.1][k]);
+    const a = m1(p).d, b = m0(q).d * 1.7;
+    worst = Math.max(worst, Math.abs(a - b) / Math.max(1e-9, Math.abs(b)));
+  }
+  ok(worst < 1e-6, `object transform: DE(pos + s·R·q) = s·DE(q) at 200 points (worst rel ${worst.toExponential(1)})`);
+  ok(makeDE(base) && makeDE({ ...defs, objScale: 1 }).length === makeDE(base).length, 'identity transform keeps the plain DE');
+}
+
 section('evolve / rebirth');
 {
   for (let i = 0; i < 200; i++) {

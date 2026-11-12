@@ -3,7 +3,7 @@
 // lock-step with map() in glsl.js, case for case (tests/browser.mjs compares
 // the GPU and CPU values for every variant, fold and fold-stack type).
 
-import { fractalRotation, mat3Mul } from './vec.js';
+import { fractalRotation, mat3Mul, objectTransform, mat3MulVec } from './vec.js';
 import { cameraBasis, pixelRay } from './camera.js';
 
 const abs = Math.abs, sgn = Math.sign;
@@ -340,7 +340,14 @@ export function makeDE(v, scaleOverride) {
   };
   map.applyFold = applyFold; // exposed for tests
   map.stackFold = stackFold;
-  return map;
+  // Object transform (matches map() in glsl.js): evaluate in the object's frame.
+  const T = objectTransform(v);
+  if (T.identity) return map;
+  return p => {
+    const q = mat3MulVec(T.inv, [p[0] - T.pos[0], p[1] - T.pos[1], p[2] - T.pos[2]]);
+    const r = map([q[0] / T.s, q[1] / T.s, q[2] / T.s]);
+    return { ...r, d: r.d * T.s };
+  };
 }
 
 // Sphere-trace one ray; returns hit distance or -1. Mirrors the shader loop,
