@@ -19,7 +19,7 @@ import { BIOMES, evolve, rebirth, encodeDiscovery, decodeDiscovery, makeProject,
 import { wrapPi, clamp } from './engine/vec.js';
 import { Panel } from './ui/panel.js';
 
-export const VERSION = '2.12.0';
+export const VERSION = '2.13.0';
 
 const $ = id => document.getElementById(id);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
@@ -198,6 +198,7 @@ const presetGroups = [
   ['Classic engine', k => !BIOMES[k].group && !BIOMES[k].v.surfVariant],
   ['Mandelbulber Amazing Surf', k => !BIOMES[k].group && !!BIOMES[k].v.surfVariant],
   ['Amazing IFS', k => BIOMES[k].group === 'ifs'],
+  ['batjorge.com · Mandelbulber scenes', k => BIOMES[k].group === 'batjorge'],
 ];
 for (const [label, test] of presetGroups) {
   const og = el('optgroup');
@@ -217,6 +218,36 @@ presetSel.addEventListener('change', () => {
   toast(`Preset: ${b.label}`);
 });
 panel.group('presets').append(presetSel);
+
+// Import a Mandelbulber settings file (.fract / .txt). Formula, camera and
+// fractal transform come across exactly; everything approximated is listed.
+{
+  const btn = el('button', 'action-btn sm', 'Import Mandelbulber Settings…');
+  btn.title = 'Load a Mandelbulber .fract settings file (single Amazing IFS or Amazing Surf Mod 1 formula)';
+  const file = el('input');
+  file.type = 'file'; file.accept = '.fract,.txt,text/plain'; file.hidden = true;
+  const dlg = el('dialog', 'import-dialog');
+  btn.addEventListener('click', () => file.click());
+  file.addEventListener('change', async () => {
+    const f = file.files && file.files[0];
+    file.value = '';
+    if (!f) return;
+    const text = await f.text();
+    const { importMandelbulber } = await import('./engine/mbimport.js');
+    let r;
+    try { r = importMandelbulber(text); } catch (e) { r = { ok: false, error: e.message }; }
+    if (!r.ok) { toast(`Can't import ${f.name}: ${r.error}`, 6000); return; }
+    pushHistory();
+    state.setMany({ ...PRESET_RESET, ...r.params });
+    presetSel.value = '';
+    const esc = x => String(x).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]);
+    dlg.innerHTML = `<h3>Imported ${esc(f.name)}</h3><p>${esc(r.formula)}: formula, iterations, fractal position / rotation and camera match Mandelbulber exactly.</p>`
+      + (r.notes.length ? `<p>Approximated or dropped:</p><ul>${r.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>` : '')
+      + '<form method="dialog"><button class="action-btn sm">OK</button></form>';
+    dlg.showModal();
+  });
+  panel.group('presets').append(btn, file, dlg);
+}
 
 // Gradient preview strip: the actual LUT (after Wrap / Reverse / Hue / Saturation),
 // one period. Click it to step to the next gradient.

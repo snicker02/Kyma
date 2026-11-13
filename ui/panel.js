@@ -110,7 +110,7 @@ export class Panel {
       this.groups.set(g.id, { header, content });
     }
 
-    const visible = PARAMS.filter(p => p.type !== 'hidden');
+    const visible = PARAMS.filter(p => p.type !== 'hidden' && p.type !== 'text');
     for (let i = 0; i < visible.length; i++) {
       const p = visible[i];
       const content = this.group(p.group);
@@ -149,6 +149,20 @@ export class Panel {
     const set = v => this.state.set(p.id, v, 'ui');
     const rec = { p, compact, fine: 0, userMin: p.min, userMax: p.max, dragging: false };
     let node;
+    // Reset-to-default button beside each input (dimmed while at the default).
+    const resetBtn = () => {
+      const b = el('button', 'reset-btn', '\u21ba');
+      b.type = 'button';
+      const shown = p.type === 'select' ? p.options[p.def] : p.type === 'bool' ? (p.def ? 'on' : 'off') : p.def;
+      b.title = `Reset to default (${shown})`;
+      b.addEventListener('click', e => {
+        e.preventDefault(); e.stopPropagation();
+        set(p.def);
+        if (rec.fine) this._centreFine(rec);
+      });
+      rec.reset = b;
+      return b;
+    };
 
     if (p.type === 'range') {
       node = el('div', 'slider-row' + (compact ? ' compact' : ''));
@@ -171,7 +185,9 @@ export class Panel {
       const num = el('input', 'val-input');
       num.type = 'number';
       num.step = p.step ?? 0.001;
-      lv.append(lab, num);
+      const nb = el('span', 'val-wrap');
+      nb.append(num, resetBtn());
+      lv.append(lab, nb);
       const slider = el('input');
       slider.type = 'range';
       slider.min = p.min; slider.max = p.max; slider.step = p.step ?? 0.001;
@@ -224,7 +240,7 @@ export class Panel {
       p.options.forEach((o, i) => { const opt = el('option', '', o); opt.value = i; select.append(opt); });
       select.addEventListener('change', () => set(parseInt(select.value, 10)));
       const lv = el('div', 'label-val');
-      lv.append(el('span', '', p.label));
+      lv.append(el('span', '', p.label), resetBtn());
       node.append(lv, select);
       rec.select = select;
     } else if (p.type === 'color') {
@@ -233,7 +249,7 @@ export class Panel {
       color.type = 'color';
       color.addEventListener('input', () => set(color.value));
       const lv = el('div', 'label-val');
-      lv.append(el('span', '', p.label));
+      lv.append(el('span', '', p.label), resetBtn());
       node.append(lv, color);
       rec.color = color;
     }
@@ -301,6 +317,7 @@ export class Panel {
     const v = this.state.get(id);
     const c = this.controls.get(id);
     if (!c) return;
+    if (c.reset) c.reset.classList.toggle('at-default', v === c.p.def);
     const active = document.activeElement;
     if (c.slider && active !== c.slider && !c.dragging) {
       // External change (undo, sequencer, auto-roll) left the fine window? Re-centre.

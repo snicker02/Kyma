@@ -57,10 +57,23 @@ export const GRADIENTS = [
   { name: 'Gilded Filigree', ...stops(6, true, '#2a1d06', '#7a5a16', '#d8b24a', '#fff1b8', '#a8761e', '#4a3410') },
   { name: 'Moss & Gold', ...stops(5, true, '#1f2a0a', '#5a6a18', '#b9a432', '#efe08c', '#7a6a1c') },
   { name: 'Shell Pink', ...stops(5, true, '#efe8f0', '#c98fb3', '#7a3d63', '#f2c94c', '#3b4a5a') },
+  // Arbitrary stop positions from a Mandelbulber material gradient (gradStops), RGB-linear like Mandelbulber.
+  { name: 'Imported (Mandelbulber)', kind: 'imported', k: 4, cyclic: true },
 ];
 export const GRADIENT_NAMES = GRADIENTS.map(g => g.name);
 export const CUSTOM_GRADIENT = GRADIENTS.findIndex(g => g.kind === 'custom'); // 27, fixed by saved projects
 export const WRAP_MODES = ['Auto', 'Repeat', 'Mirror'];
+export const IMPORTED_GRADIENT = GRADIENTS.findIndex(g => g.kind === 'imported');
+
+// "pos:#hex …" → sorted [{ t, rgb }]
+export function parseStops(str) {
+  const out = [];
+  for (const tok of String(str || '').trim().split(/\s+/)) {
+    const m = tok.match(/^([0-9.]+):(#[0-9a-f]{6})$/i);
+    if (m) out.push({ t: Math.min(1, Math.max(0, +m[1])), rgb: hexToRgb(m[2]) });
+  }
+  return out.sort((a, b) => a.t - b.t);
+}
 
 // ── colour maths ──────────────────────────────────────────────────────────────
 function hexToRgb(h) {
@@ -112,9 +125,25 @@ function adjust([r, g, b], hueDeg, sat) {
 }
 
 // Sample a gradient's base curve at t ∈ [0,1) (one period).
-function baseSampler(g, custom) {
+function baseSampler(g, custom, stopsStr) {
   if (g.kind === 'cos') {
     return t => [0, 1, 2].map(i => g.a[i] + g.b[i] * Math.cos(TAU * t + g.ph[i]));
+  }
+  if (g.kind === 'imported') {
+    // Mandelbulber cColorGradient: linear RGB between stops, wrapping last → first.
+    const st = parseStops(stopsStr);
+    if (st.length === 0) return () => [0.5, 0.5, 0.5];
+    if (st.length === 1) return () => st[0].rgb;
+    return t => {
+      let i = st.length - 1;
+      for (let k = 0; k < st.length; k++) if (st[k].t <= t) i = k;
+      if (t < st[0].t) i = st.length - 1;
+      const a = st[i], b = st[(i + 1) % st.length];
+      let span = b.t - a.t; if (span <= 0) span += 1;
+      let f = t - a.t; if (f < 0) f += 1;
+      f = Math.min(1, f / span);
+      return [0, 1, 2].map(j => a.rgb[j] + (b.rgb[j] - a.rgb[j]) * f);
+    };
   }
   if (g.kind === 'bands') {
     const cols = g.hex.map(hexToRgb), n = cols.length, e = g.edge;
@@ -148,6 +177,7 @@ export function gradientSpec(v) {
     sat: v.gradSat ?? 1,
     repeat: v.gradRepeat ?? 1,
     custom: idx === CUSTOM_GRADIENT ? [v.gradC1, v.gradC2, v.gradC3, v.gradC4, v.gradC5] : null,
+    stops: GRADIENTS[idx].kind === 'imported' ? (v.gradStops || '') : null,
   };
 }
 export const gradientKey = s => JSON.stringify(s);
@@ -167,7 +197,7 @@ export function gradientScale(spec) {
 export function buildGradientLUT(spec, size = LUT_SIZE) {
   const g = GRADIENTS[spec.idx];
   const custom = (spec.custom || []).map(c => (/^#[0-9a-f]{6}$/i.test(c || '') ? c : '#808080'));
-  const f = baseSampler(g, custom);
+  const f = baseSampler(g, custom, spec.stops);
   const mirror = mirrored(spec, g);
   const out = new Uint8Array(size * 4);
   for (let i = 0; i < size; i++) {

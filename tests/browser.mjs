@@ -140,10 +140,12 @@ for (const key of ['default', ...Object.keys(await page.evaluate(async () => (aw
     const s = window.__surf;
     s.state.resetAll();
     if (k !== 'default') s.state.setMany(BIOMES[k].v);
-    s.state.setMany({ maxSamples: 4, renderScale: 0.5 });
+    // 250-iteration Mandelbulber scenes take minutes a frame on SwiftShader.
+    const heavy = s.state.values.iterations > 60;
+    s.state.setMany(heavy ? { maxSamples: 1, renderScale: 0.2 } : { maxSamples: 4, renderScale: 0.5 });
   }, key);
   const t0 = Date.now();
-  await page.waitForFunction(() => window.__surf.renderer.live.samples >= 4, null, { timeout: 120000 });
+  await page.waitForFunction(() => window.__surf.renderer.live.samples >= window.__surf.state.values.maxSamples && !window.__surf.renderer.isCompiling(), null, { timeout: 600000 });
   await page.screenshot({ path: `${OUT}/biome-${key}.png`, timeout: 180000 });
   console.log(`  shot  ${key} (${((Date.now() - t0) / 1000).toFixed(1)} s)`);
 }

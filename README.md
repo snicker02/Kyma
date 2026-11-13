@@ -1,4 +1,4 @@
-# Kyma v2.12.0
+# Kyma v2.13.0
 
 **Kyma** (κῦμα, Greek for "wave") is a progressive WebGL1 raymarcher for Kali's **Amazing Surf** fractal family. It includes all nine of Mandelbulber's surf formulas, path tracing, volumetric glow and environment lighting. It has no dependencies and no build step. It was formerly *Amazing Surf*; old project files, discovery strings (`SURF2:`) and saved panel layouts still load.
 
@@ -159,6 +159,37 @@ Because the sum varies smoothly over a surface, a banded gradient (Circus Stripe
 
 Presets: **Striped Shells**, **Ribbon Bowl** and **Ring Reliquary** in the *Amazing IFS* section of the dropdown.
 
+## Mandelbulber import & batjorge scenes
+
+**Import Mandelbulber Settings…** (Presets panel) loads a Mandelbulber 2 settings file (`.fract`, or the `.txt` that pastebin exports) whose formula is a single **Amazing IFS** (id 239) or **Amazing Surf Mod 1** (id 77).
+
+Imported exactly:
+- every formula parameter, including Amazing IFS's built-in sphere inversion and its iteration ranges;
+- *don't add c constant*;
+- the iteration count (up to 250);
+- fractal position / rotation, which become the Object Transform;
+- the camera: eye, target, roll and vertical field of view;
+- Mandelbulber's 3.0 cap on each ray-march step (**Max Step**) and its DE factor.
+
+The test suite carries a line-by-line JavaScript port of the two Mandelbulber formulas and of its distance loop (`tests/mb_reference.mjs`, written against the C++ and not against Kyma). It checks each bundled file at 150 points to within 1e-13, and checks the camera exactly. On the GPU the imported scenes match the CPU to under 0.001%.
+
+Approximated, with a dialog listing each one after import:
+- image-textured materials use the material's colour gradient, as the *Imported (Mandelbulber)* gradient;
+- HDR skies become a sky colour;
+- the first water or plane primitive becomes the ground plane, with the world rotated so that plane is level and the camera is above it;
+- the main light uses its direction only;
+- DOF and fog are approximated.
+
+Spheres and other primitives, hybrids and other formulas are not imported.
+
+The dropdown's **batjorge.com · Mandelbulber scenes** section holds four scenes by Jorge (batjorge, https://fractal.batjorge.com), included with his permission: **Voyager**, **Cuentos**, **Amrand** (Amazing IFS) and **Una de Setas** (Amazing Surf Mod 1). His original files are in `presets/batjorge/`. The forms and framing are his; the surfaces differ, because his colours come from photo textures and HDR skies that aren't part of the files.
+
+These scenes run 250 iterations, as in Mandelbulber, so expect them to be slower than the other presets.
+
+## Reset buttons
+
+Every slider, dropdown and colour has a **↺** button beside its value that sets it back to its default (0 for most offsets and rotations). The button is dimmed while the value is already at the default.
+
 ## Ground plane
 
 A horizontal plane at **Height** that the fractal stands on (right dock, *Ground Plane*). It is a separate surface in the ray march, not part of the formula, so it changes nothing about the fractal's shape, colour or distance estimate. It receives the fractal's shadows (**Receives Shadows**) and contact darkening (Surface AO).
@@ -253,6 +284,7 @@ engine/
   video.js          WebCodecs encoder wrapper: codec/level selection, bitrate presets
   mux.js            dependency-free MP4 (H.264) and WebM (VP8/VP9) muxers
   gradients.js      gradient library, OKLab blending, modifiers → 256-texel LUT
+  mbimport.js       Mandelbulber .fract importer (Amazing IFS, Amazing Surf Mod 1)
   environment.js    procedural sky presets, image → power-of-two env texture
   vec.js            vector/matrix helpers
 ui/panel.js         builds both docks from the schema

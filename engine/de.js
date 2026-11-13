@@ -154,7 +154,7 @@ export function makeDE(v, scaleOverride) {
   const map = function map(p) {
     let z = [p[0], p[1], p[2]];
     let dr = 1, trap = 1e10;
-    const off = variant === 8 || variant === 9 ? [0, 0, 0] : (v.juliaMode ? jc : p);
+    const off = variant === 8 || variant === 9 || v.noC ? [0, 0, 0] : (v.juliaMode ? jc : p);
     let minDE = 1000;
     let actualScale = scale, scaleA = 0;
     let S = [1, 0, 0, 0, 1, 0, 0, 0, 1];
@@ -278,9 +278,18 @@ export function makeDE(v, scaleOverride) {
         if (rotOn) z = mv(R, z);
       } else if (variant === 10) {
         // Amazing IFS — mirrors the SURF_VARIANT 10 block in glsl.js.
+        if (v.vSInvOn && i >= (v.vSInvStart | 0) && i < (v.vSInvStop ?? 1)) {
+          const so = [v.vSInvOffX || 0, v.vSInvOffY || 0, v.vSInvOffZ || 0];
+          z = add(z, so);
+          const ri = dot3(z), g = v.vSInvG ?? 1;
+          z = mul(z, g / ri); dr *= g / ri;
+          z = add(z, [(v.vSInvAddX || 0) - so[0], (v.vSInvAddY || 0) - so[1], (v.vSInvAddZ || 0) - so[2]]);
+          const a = v.vSInvA ?? 1;
+          z = mul(z, a); dr *= a;
+        }
         for (let k = 0; k < 3; k++) if (preAbs[k]) z[k] = abs(z[k]);
         z = add(z, vOff);
-        if (v.vPolyOn) {
+        if (v.vPolyOn && i < (v.vPolyStop ?? 1)) {
           z[1] = abs(z[1]);
           const psi = Math.PI / v.polarN;
           const pa = abs(fmodC(Math.atan2(z[1], z[0]) + psi, 2 * psi) - psi);
@@ -297,7 +306,8 @@ export function makeDE(v, scaleOverride) {
         z = mul(z, useScale); dr = dr * abs(useScale) + v.vDEOffset;
         if (v.scaleVary !== 0) scaleA -= v.scaleVary * (abs(scaleA) - 1);
         if (rotOn) z = mv(R, z);
-        if (i >= (v.vMinDEStart | 0)) minDE = Math.min(minDE, Math.hypot(z[0], z[1], z[2]) / abs(dr));
+        const de0 = Math.hypot(z[0], z[1], z[2]) / abs(dr);
+        minDE = i >= (v.vMinDEStart | 0) && i < (v.vMinDEStop ?? 250) ? Math.min(minDE, de0) : de0;
         if (v.vAddC) z = add(z, off);
       } else {
         if (variant === 9 && v.vPolyOn) {
@@ -361,7 +371,7 @@ export function marchInfo(map, ro, rd, v) {
     const d = map(p).d;
     if (!Number.isFinite(d)) return { t: -1, reason: 'nan', steps: i };
     if (d < eps0 * (1 + t * 0.1)) return { t, reason: 'hit', steps: i };
-    t += d * fac;
+    t += v.maxStep > 0 ? Math.min(d * fac, v.maxStep) : d * fac;
     if (t > maxD) return { t: -1, reason: 'far', steps: i };
   }
   return { t: v.missAsHit ? t : -1, reason: 'stranded', steps: i };

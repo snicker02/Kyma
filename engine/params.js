@@ -102,6 +102,18 @@ export const PARAMS = [
   { id: 'vPolyOn', label: 'Polyfold (N = Polar Sectors)', type: 'bool', group: 'variant', def: false, gate: 'surfVariant', gateEq: [9, 10] },
   { id: 'vPolyAbsY', label: 'Polyfold: Mirror Y', type: 'bool', group: 'variant', def: true, gate: 'surfVariant', gateEq: 9 },
   // Amazing IFS (variant 10)
+  { id: 'vSInvOn', label: 'Sphere Inversion (Mandelbulber)', type: 'bool', group: 'variant', def: false, section: 'IFS Sphere Inversion', gate: 'surfVariant', gateEq: 10 },
+  { id: 'vSInvOffX', label: 'OX', type: 'range', group: 'variant', min: -3, max: 3, step: 0.001, def: 0, row: 'vsio', gate: 'vSInvOn' },
+  { id: 'vSInvOffY', label: 'OY', type: 'range', group: 'variant', min: -3, max: 3, step: 0.001, def: 0, row: 'vsio', gate: 'vSInvOn' },
+  { id: 'vSInvOffZ', label: 'OZ', type: 'range', group: 'variant', min: -3, max: 3, step: 0.001, def: 0, row: 'vsio', gate: 'vSInvOn' },
+  { id: 'vSInvAddX', label: 'AX', type: 'range', group: 'variant', min: -3, max: 3, step: 0.001, def: 0, row: 'vsia', gate: 'vSInvOn' },
+  { id: 'vSInvAddY', label: 'AY', type: 'range', group: 'variant', min: -3, max: 3, step: 0.001, def: 0, row: 'vsia', gate: 'vSInvOn' },
+  { id: 'vSInvAddZ', label: 'AZ', type: 'range', group: 'variant', min: -3, max: 3, step: 0.001, def: 0, row: 'vsia', gate: 'vSInvOn' },
+  { id: 'vSInvG', label: 'Radius²', type: 'range', group: 'variant', min: 0.01, max: 5, step: 0.001, def: 1, row: 'vsis', gate: 'vSInvOn' },
+  { id: 'vSInvA', label: 'Post Scale', type: 'range', group: 'variant', min: 0.1, max: 5, step: 0.001, def: 1, row: 'vsis', gate: 'vSInvOn' },
+  { id: 'vSInvStart', label: 'From Iter', type: 'range', group: 'variant', min: 0, max: 20, step: 1, def: 0, int: true, hardMin: 0, hardMax: 249, row: 'vsii', gate: 'vSInvOn' },
+  { id: 'vSInvStop', label: 'Until Iter', type: 'range', group: 'variant', min: 1, max: 40, step: 1, def: 1, int: true, hardMin: 1, hardMax: 250, row: 'vsii', gate: 'vSInvOn' },
+  { id: 'vPolyStop', label: 'Polyfold Until Iter', type: 'range', group: 'variant', min: 1, max: 40, step: 1, def: 1, int: true, hardMin: 1, hardMax: 250, gate: 'surfVariant', gateEq: 10 },
   { id: 'vPreAbsX', label: '|X|', type: 'bool', group: 'variant', def: false, row: 'vpre', section: 'Pre-Fold Abs', gate: 'surfVariant', gateEq: 10 },
   { id: 'vPreAbsY', label: '|Y|', type: 'bool', group: 'variant', def: false, row: 'vpre', gate: 'surfVariant', gateEq: 10 },
   { id: 'vPreAbsZ', label: '|Z|', type: 'bool', group: 'variant', def: false, row: 'vpre', gate: 'surfVariant', gateEq: 10 },
@@ -116,13 +128,14 @@ export const PARAMS = [
   { id: 'vIfsAddZ', label: 'AZ', type: 'range', group: 'variant', min: -2, max: 2, step: 0.001, def: 0, row: 'vifsa', gate: 'surfVariant', gateEq: 10, mutate: true },
   { id: 'vAddC', label: 'Add c (pixel / Julia)', type: 'bool', group: 'variant', def: false, gate: 'surfVariant', gateEq: 10 },
   { id: 'vMinDE', label: 'Smooth DE (min over iterations)', type: 'bool', group: 'variant', def: false, gate: 'surfVariant', gateEq: 10 },
+  { id: 'vMinDEStop', label: 'Smooth DE Until Iteration', type: 'range', group: 'variant', min: 1, max: 250, step: 1, def: 250, int: true, hardMin: 1, hardMax: 250, gate: 'vMinDE' },
   { id: 'vMinDEStart', label: 'Smooth DE From Iteration', type: 'range', group: 'variant', min: 0, max: 20, step: 1, def: 0, int: true, hardMin: 0, hardMax: 39, gate: 'vMinDE' },
 
   // ── Geometric core ──────────────────────────────────────────────────────
   { id: 'scale', label: 'Base Scale', type: 'range', group: 'geo', min: -4, max: 4, step: 0.001, def: 2, mutate: true },
   { id: 'scaleVary', label: 'Scale Vary', type: 'range', group: 'geo', min: -2, max: 2, step: 0.001, def: 0, mutate: true },
   { id: 'influence', label: 'Influence', type: 'range', group: 'geo', min: 0, max: 2, step: 0.001, def: 1, mutate: true, gate: 'surfVariant', gateEq: [0, 1, 2, 6] },
-  { id: 'minR', label: 'Min Radius', type: 'range', group: 'geo', min: 0.001, max: 2.5, step: 0.001, def: 0.5, hardMin: 0.0001, mutate: true },
+  { id: 'minR', label: 'Min Radius', type: 'range', group: 'geo', min: 0, max: 2.5, step: 0.001, def: 0.5, hardMin: 0, mutate: true },
   { id: 'cylinder', label: 'Cylindrical Sphere-Fold', type: 'bool', group: 'geo', def: false },
 
   // ── Fold types ──────────────────────────────────────────────────────────
@@ -141,6 +154,7 @@ export const PARAMS = [
   { id: 'juliaCX', label: 'JX', type: 'range', group: 'fold', min: -2, max: 2, step: 0.01, def: 0, row: 'julia', section: 'Julia Seed (C)', gate: 'juliaMode', mutate: true },
   { id: 'juliaCY', label: 'JY', type: 'range', group: 'fold', min: -2, max: 2, step: 0.01, def: 0, row: 'julia', gate: 'juliaMode', mutate: true },
   { id: 'juliaCZ', label: 'JZ', type: 'range', group: 'fold', min: -2, max: 2, step: 0.01, def: 0, row: 'julia', gate: 'juliaMode', mutate: true },
+  { id: 'noC', label: "Don't Add c", type: 'bool', group: 'fold', def: false, gate: 'surfVariant', gateEq: [0, 1, 2, 3, 4, 5, 6, 7] },
   { id: 'cMult', label: 'C-Mult', type: 'range', group: 'fold', min: -2, max: 2, step: 0.01, def: 0, mutate: true, gate: 'surfVariant', gateEq: [0, 1, 3, 4, 5, 6] },
   { id: 'preAlpha', label: 'Pre α', type: 'range', group: 'fold', min: -PI, max: PI, step: 0.001, def: 0, section: 'Pre-Fold Rotation (tilts the fold planes)', mutate: true, fine: true },
   { id: 'preBeta', label: 'Pre β', type: 'range', group: 'fold', min: -PI, max: PI, step: 0.001, def: 0, mutate: true, fine: true },
@@ -164,10 +178,11 @@ export const PARAMS = [
   { id: 'invCZ', label: 'CZ', type: 'range', group: 'inv', min: -2, max: 2, step: 0.01, def: 0, row: 'invc', gate: 'invEnabled' },
 
   // ── Iteration ───────────────────────────────────────────────────────────
-  { id: 'iterations', label: 'Iterations', type: 'range', group: 'iter', min: 1, max: 40, step: 1, def: 16, int: true, hardMin: 1, hardMax: 40 },
+  { id: 'iterations', label: 'Iterations', type: 'range', group: 'iter', min: 1, max: 250, step: 1, def: 16, int: true, hardMin: 1, hardMax: 250 },
   { id: 'maxSteps', label: 'Max Ray Steps', type: 'range', group: 'iter', min: 64, max: 1024, step: 1, def: 256, int: true, hardMin: 16, hardMax: 1024, interp: 'none', section: 'Ray Marching (fixes cut-off surfaces)' },
   { id: 'detail', label: 'Surface Detail', type: 'range', group: 'iter', min: 0.05, max: 4, step: 0.01, def: 1, hardMin: 0.01, interp: 'none' },
   { id: 'stepFactor', label: 'Step Factor', type: 'range', group: 'iter', min: 0.1, max: 2, step: 0.01, def: 1, hardMin: 0.01, hardMax: 4, interp: 'none' },
+  { id: 'maxStep', label: 'Max Step (0 = off)', type: 'range', group: 'iter', min: 0, max: 10, step: 0.01, def: 0, hardMin: 0, interp: 'none' },
   { id: 'maxDist', label: 'Max Distance', type: 'range', group: 'iter', min: 5, max: 500, step: 1, def: 100, hardMin: 0.1, interp: 'none' },
   { id: 'missAsHit', label: 'Shade Stranded Rays as Surface', type: 'bool', group: 'iter', def: false, interp: 'none' },
   { id: 'debugView', label: 'Debug View', type: 'select', group: 'iter', options: ['Off', 'Step Heatmap', 'Miss Reason (red = out of steps)'], def: 0, interp: 'none' },
@@ -216,6 +231,8 @@ export const PARAMS = [
   { id: 'foldColW', label: 'Box-Fold Color', type: 'range', group: 'style', min: 0, max: 2, step: 0.01, def: 0.25, gate: 'colorSource', gateEq: [1, 2, 3], row: 'fcol' },
   { id: 'sphColW', label: 'Sphere-Fold Color', type: 'range', group: 'style', min: 0, max: 2, step: 0.01, def: 0.5, gate: 'colorSource', gateEq: [1, 2, 3], row: 'fcol' },
   { id: 'colorIters', label: 'Color Iterations', type: 'range', group: 'style', min: 1, max: 40, step: 1, def: 6, int: true, hardMin: 1, gate: 'colorSource', gateEq: [1, 2, 3] },
+  // Stops for the 'Imported' gradient: "pos:#rrggbb pos:#rrggbb …", pos 0…1 (Mandelbulber import).
+  { id: 'gradStops', type: 'text', group: 'style', def: '' },
   { id: 'gradRepeat', label: 'Gradient Repeat', type: 'range', group: 'style', min: 0.1, max: 32, step: 0.01, def: 1, hardMin: 0.01 },
   { id: 'gradWrap', label: 'Wrap', type: 'select', group: 'style', options: WRAP_MODES, def: 0, row: 'gradA' },
   { id: 'gradReverse', label: 'Reverse', type: 'bool', group: 'style', def: false, row: 'gradA' },
@@ -314,6 +331,7 @@ export function interpOf(p) {
   if (p.interp) return p.interp;
   if (p.type === 'bool' || p.type === 'select') return 'step';
   if (p.type === 'color') return 'color';
+  if (p.type === 'text') return 'step';
   return 'lerp';
 }
 
@@ -327,6 +345,7 @@ export function coerce(p, v) {
       if (!Number.isFinite(n)) return undefined;
       return Math.max(0, Math.min(p.options.length - 1, n));
     }
+    case 'text': return typeof v === 'string' ? v.slice(0, 4000) : undefined;
     case 'color': {
       if (typeof v !== 'string') return undefined;
       const s = v.trim().toLowerCase();

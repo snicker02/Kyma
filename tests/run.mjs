@@ -34,7 +34,7 @@ for (const p of PARAMS) {
   if (p.fine) ok(p.type === 'range', `${p.id}: fine-tune only applies to ranges`);
   if (p.type === 'range') ok(p.min < p.max, `${p.id} min<max`);
 }
-ok(coerce(PARAM_BY_ID.get('iterations'), 99) === 40, 'iterations hard-clamped to shader loop bound');
+ok(coerce(PARAM_BY_ID.get('iterations'), 999) === 250, 'iterations hard-clamped to shader loop bound');
 ok(coerce(PARAM_BY_ID.get('maxSteps'), 9999) === 1024, 'maxSteps hard-clamped to shader loop bound');
 ok(FRACTAL_FRAG.includes('for (int i = 0; i < 1024; i++)'), 'shader march loop bound matches maxSteps hardMax');
 ok(coerce(PARAM_BY_ID.get('lightColor'), 'red') === undefined, 'bad colour rejected');
@@ -383,7 +383,7 @@ section('discovery');
   try { decodeDiscovery('hello'); } catch { threw = true; }
   ok(threw, 'junk rejected');
   const evil = decodeDiscovery('{"iterations": 1e9, "bogus": 1, "lightColor": "javascript:"}');
-  ok(evil.iterations === 40 && !('bogus' in evil) && evil.lightColor === base.lightColor, 'hostile values sanitised');
+  ok(evil.iterations === 250 && !('bogus' in evil) && evil.lightColor === base.lightColor, 'hostile values sanitised');
   const proj = makeProject({ ...base, scale: 1.7 }, [{ dist: 3 }, { dist: 4 }]);
   const pp = parseProject(JSON.stringify(proj));
   ok(pp.params.scale === 1.7 && pp.keyframes.length === 2, 'project round-trip');
@@ -410,7 +410,7 @@ section('amazing ifs vs Mandelbulber reference');
       if (f.functionEnabledAy) z[1] = fabs(z[1]);
       if (f.functionEnabledAz) z[2] = fabs(z[2]);
       z = z.map((x, k) => x + f.offsetA000[k]);
-      if (f.functionEnabledP) {
+      if (f.functionEnabledP && aux.i < f.stopP) {
         z[1] = fabs(z[1]);
         let psi = Math.PI / f.int6;
         psi = fabs(((Math.atan2(z[1], z[0]) + psi) % (2 * psi) + 2 * psi) % (2 * psi) - psi);
@@ -436,7 +436,8 @@ section('amazing ifs vs Mandelbulber reference');
       if (f.functionEnabledK) aux.actualScaleA -= f.scaleVary0 * (fabs(aux.actualScaleA) - 1);
       z = R(z);
       aux.DE0 = Math.hypot(...z) / aux.DE;
-      if (aux.i >= f.startIterationsC) aux.dist = Math.min(aux.dist, aux.DE0);
+      if (aux.i >= f.startIterationsC && aux.i < 250) aux.DE0 = Math.min(aux.dist, aux.DE0);
+      aux.dist = aux.DE0;
       if (f.cpixel) z = z.map((x, k) => x + f.c[k]);
       if (z[0] * z[0] + z[1] * z[1] + z[2] * z[2] > 10000) break;
     }
@@ -451,7 +452,7 @@ section('amazing ifs vs Mandelbulber reference');
       scale: r(1.5, 2.6), minR: r(0.2, 0.8), foldX: r(0.3, 1.2), foldY: r(0.3, 1.2), foldZ: r(0.3, 1.2), vZFold: rnd() < 0.5,
       vPreAbsX: rnd() < 0.3, vPreAbsY: rnd() < 0.3, vPreAbsZ: rnd() < 0.3, vIfsX: modes[0], vIfsY: modes[1], vIfsZ: modes[2],
       vIfsOffX: r(-1, 1), vIfsOffY: r(-1, 1), vIfsOffZ: r(-1, 1), vIfsAddX: r(-0.5, 0.5), vIfsAddY: r(-0.5, 0.5), vIfsAddZ: r(-0.5, 0.5),
-      vOffX: r(-0.3, 0.3), vOffY: r(-0.3, 0.3), vOffZ: r(-0.3, 0.3), vPolyOn: rnd() < 0.4, polarN: 3 + Math.floor(r(0, 6)),
+      vOffX: r(-0.3, 0.3), vOffY: r(-0.3, 0.3), vOffZ: r(-0.3, 0.3), vPolyOn: rnd() < 0.4, vPolyStop: 1 + Math.floor(r(0, 12)), polarN: 3 + Math.floor(r(0, 6)),
       vDEOffset: r(0, 1), scaleVary: rnd() < 0.5 ? 0 : r(-0.3, 0.3), alpha: r(-0.5, 0.5), beta: r(-0.5, 0.5), gamma: r(-0.5, 0.5),
       vAddC: rnd() < 0.5, vMinDEStart: Math.floor(r(0, 5)), juliaMode: true, juliaCX: r(-0.5, 0.5), juliaCY: r(-0.5, 0.5), juliaCZ: r(-0.5, 0.5), invEnabled: false };
     const f = {
@@ -461,7 +462,7 @@ section('amazing ifs vs Mandelbulber reference');
       functionEnabledB: modes.map(m => m > 0), functionEnabledSign: modes.map(m => m === 2),
       additionConstantP000: [v.vIfsOffX, v.vIfsOffY, v.vIfsOffZ], additionConstantA000: [v.vIfsAddX, v.vIfsAddY, v.vIfsAddZ],
       minR2p25: v.minR * v.minR, scale2: v.scale, offset0: v.vDEOffset, functionEnabledK: v.scaleVary !== 0, scaleVary0: v.scaleVary,
-      alpha: v.alpha, beta: v.beta, gamma: v.gamma, startIterationsC: v.vMinDEStart, cpixel: v.vAddC, c: [v.juliaCX, v.juliaCY, v.juliaCZ] };
+      alpha: v.alpha, beta: v.beta, gamma: v.gamma, startIterationsC: v.vMinDEStart, stopP: v.vPolyStop, cpixel: v.vAddC, c: [v.juliaCX, v.juliaCY, v.juliaCZ] };
     for (let q = 0; q < 8; q++) {
       const p = [r(-2, 2), r(-2, 2), r(-2, 2)];
       const ref = mbAmazingIfs(p, f, v.iterations);
@@ -494,6 +495,48 @@ section('object transform');
   }
   ok(worst < 1e-6, `object transform: DE(pos + s·R·q) = s·DE(q) at 200 points (worst rel ${worst.toExponential(1)})`);
   ok(makeDE(base) && makeDE({ ...defs, objScale: 1 }).length === makeDE(base).length, 'identity transform keeps the plain DE');
+}
+
+section('mandelbulber import');
+{
+  const { readFileSync } = await import('node:fs');
+  const { importMandelbulber, parseFract } = await import('../engine/mbimport.js');
+  const { mbDistance } = await import('./mb_reference.mjs');
+  const { cameraBasis } = await import('../engine/camera.js');
+  const { PARAMS, coerce } = await import('../engine/params.js');
+  const defs = Object.fromEntries(PARAMS.map(p => [p.id, p.def]));
+  const dir = new URL('../presets/batjorge/', import.meta.url);
+  for (const name of ['voyager', 'cuentos', 'una-de-setas', 'amrand']) {
+    const txt = readFileSync(new URL(name + '.fract', dir), 'utf8');
+    const r = importMandelbulber(txt);
+    ok(r.ok, `${name}: imports (${r.formula || r.error})`);
+    if (!r.ok) continue;
+    const S = parseFract(txt), m = S.main_parameters;
+    const v = { ...defs };
+    for (const p of PARAMS) if (p.id in r.params) v[p.id] = coerce(p, r.params[p.id]);
+    const de = makeDE(v), W = r.world;
+    const toK = q => [W[0] * q[0] + W[1] * q[1] + W[2] * q[2], W[3] * q[0] + W[4] * q[1] + W[5] * q[2], W[6] * q[0] + W[7] * q[1] + W[8] * q[2]];
+    const nums = s => s.trim().split(/\s+/).map(x => Number(x.replace(',', '.')));
+    const tgt = nums(m.target), cam = nums(m.camera);
+    const span = Math.hypot(...tgt.map((x, k) => x - cam[k]));
+    let worst = 0, seed = 11;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < 150; i++) {
+      const p = tgt.map(x => x + (rnd() * 2 - 1) * span * 0.6);
+      const ref = 0.5 * mbDistance(m, S.fractal_1 || {}, p);
+      worst = Math.max(worst, Math.abs(de(toK(p)).d - ref) / Math.max(1e-12, Math.abs(ref)));
+    }
+    ok(worst < 1e-6, `${name}: DE matches the Mandelbulber port at 150 points (worst rel ${worst.toExponential(1)})`);
+    const b = cameraBasis(v), eye = toK(cam), fw = toK(tgt.map((x, k) => x - cam[k])), fl = Math.hypot(...fw), top = toK(nums(m.camera_top));
+    const eyeErr = Math.hypot(...b.eye.map((x, k) => x - eye[k]));
+    const fwdErr = Math.hypot(...b.forward.map((x, k) => x - fw[k] / fl));
+    const upDot = b.up.reduce((s2, x, k) => s2 + x * top[k], 0) / Math.hypot(...top);
+    ok(eyeErr < 1e-9 && fwdErr < 1e-9 && upDot > 0.999999, `${name}: camera eye / direction / roll exact`);
+    ok(Math.abs(v.lens - 0.5 / Math.tan(nums(m.fov)[0] * Math.PI / 360)) < 1e-12, `${name}: field of view`);
+  }
+  const hy = importMandelbulber(readFileSync(new URL('rusticalia-hybrid.fract', dir), 'utf8'));
+  ok(!hy.ok && /Hybrid/.test(hy.error), 'hybrid files are rejected with a reason');
+  ok(!importMandelbulber('hello').ok, 'non-Mandelbulber text is rejected');
 }
 
 section('evolve / rebirth');

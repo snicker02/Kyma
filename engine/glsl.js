@@ -127,6 +127,7 @@ uniform float u_influence;
 uniform int   u_axisOrder;
 uniform float u_tgladWeight;
 uniform float u_cMult;
+uniform bool  u_noC;
 uniform bool  u_juliaMode;
 uniform bool  u_cylinder;
 uniform vec3  u_juliaC;
@@ -171,7 +172,17 @@ uniform vec3  u_vIfsOff;
 uniform vec3  u_vIfsAdd;       // offset added after the IFS fold, before the sphere fold
 uniform bool  u_vAddC;         // add c (pixel or Julia) like Mandelbulber's "c pixel" option
 uniform bool  u_vMinDE;        // DE = min over iterations of |z|/dr (Mandelbulber custom DE)
-uniform int   u_vMinDEStart;   // first iteration that counts (Mandelbulber startIterationsC)
+uniform int   u_vMinDEStart;   // Mandelbulber startIterationsC
+uniform int   u_vMinDEStop;    // Mandelbulber stopIterationsC
+uniform int   u_vPolyStop;     // polyfold runs for iterations [0, stop) (Mandelbulber stopIterationsP1, default 1)
+// Amazing IFS built-in sphere inversion (Mandelbulber transformCommon, iterations [start, stop))
+uniform bool  u_vSInvOn;
+uniform vec3  u_vSInvOff;      // offset000
+uniform float u_vSInvG;        // scaleG1 (r² of the inversion sphere)
+uniform vec3  u_vSInvAdd;      // additionConstant000
+uniform float u_vSInvA;        // scaleA1
+uniform int   u_vSInvStart;
+uniform int   u_vSInvStop;
 
 uniform bool  u_invEnabled;
 uniform int   u_invMode;
@@ -192,6 +203,8 @@ uniform float u_focalDist;
 uniform int   u_maxSteps;
 uniform float u_detail;
 uniform float u_stepFactor;
+uniform float u_maxStep;       // 0 = off; Mandelbulber caps every march step at 3
+float marchStep(float d) { float s = d * u_stepFactor; return u_maxStep > 0.0 ? min(s, u_maxStep) : s; }
 uniform float u_maxDist;
 uniform bool  u_missAsHit;
 uniform int   u_debugView;
@@ -315,12 +328,13 @@ float mapLocal(vec3 p, out float trap) {
 #if SURF_VARIANT == 8 || SURF_VARIANT == 9
   offset = vec3(0.0); // Klein formulas add no c
 #endif
+  if (u_noC) offset = vec3(0.0); // Mandelbulber "don't add c constant"
   float actualScale = u_scale;
   float scaleA = 0.0;
   float minR2 = u_minR * u_minR;
   mat3 spin = mat3(1.0);
 
-  for (int i = 0; i < 40; i++) {
+  for (int i = 0; i < 250; i++) {
     if (i >= u_iterations) break;
     g_colOn = i < u_colorIters ? 1.0 : 0.0;
 
@@ -490,12 +504,21 @@ float mapLocal(vec3 p, out float trap) {
 #elif SURF_VARIANT == 10
     // Amazing IFS (Mandelbulber fractal_amazing_ifs.cpp; Kali, DarkBeam): Amazing
     // Surf Mod 4 plus an IFS mirror-and-shift fold, with c off by default.
-    // Its built-in sphere inversion is Kyma's Sphere Inversion (start of iteration).
+    // Built-in sphere inversion, exactly as Mandelbulber (first iteration by default).
+    if (u_vSInvOn && i >= u_vSInvStart && i < u_vSInvStop) {
+      z += u_vSInvOff;
+      float ri = dot(z, z);
+      z *= u_vSInvG / ri;
+      dr *= u_vSInvG / ri;
+      z += u_vSInvAdd - u_vSInvOff;
+      z *= u_vSInvA;
+      dr *= u_vSInvA;
+    }
     if (u_vPreAbs.x > 0.5) z.x = abs(z.x);
     if (u_vPreAbs.y > 0.5) z.y = abs(z.y);
     if (u_vPreAbs.z > 0.5) z.z = abs(z.z);
     z += u_vOff;
-    if (u_vPolyOn) {
+    if (u_vPolyOn && i < u_vPolyStop) {
       z.y = abs(z.y);
       float psi = 3.14159265 / u_polarN;
       float pa = abs(fmodC(atan(z.y, z.x) + psi, 2.0 * psi) - psi);
@@ -517,7 +540,9 @@ float mapLocal(vec3 p, out float trap) {
     dr = dr * abs(useScale) + u_vDEOffset;
     if (u_scaleVary != 0.0) scaleA -= u_scaleVary * (abs(scaleA) - 1.0);
     if (rotOn) z = u_rotMatrix * z;
-    if (i >= u_vMinDEStart) minDE = min(minDE, length(z) / abs(dr));
+    // Mandelbulber aux.dist: running min only inside [start, stop), else reset.
+    float de0 = length(z) / abs(dr);
+    minDE = (i >= u_vMinDEStart && i < u_vMinDEStop) ? min(minDE, de0) : de0;
     if (u_vAddC) z += offset;
 
 #else
@@ -753,7 +778,7 @@ bool marchFractal(vec3 ro, vec3 rd, out float t, out float trap) {
     if (i >= u_maxSteps) return false;
     float d = map(ro + rd * t, trap);
     if (d < eps0 * (1.0 + t * 0.1)) return true;
-    t += d * u_stepFactor;
+    t += marchStep(d);
     if (t > u_maxDist) return false;
   }
   return false;
@@ -914,7 +939,7 @@ void main() {
       vol += scatter * min(d, 0.08) * u_volumetric;
     }
     if (d < eps0 * (1.0 + t * 0.1)) { hit = true; exhausted = false; break; }
-    t += d * u_stepFactor;
+    t += marchStep(d);
     steps = float(i);
     if (t > u_maxDist) { exhausted = false; break; }
   }
@@ -1025,7 +1050,7 @@ bool traceHit(vec3 ro, vec3 rd, out float t, out float trap) {
     g_onGround = dg < d;
     d = min(d, dg);
     if (d < eps0 * (1.0 + t * 0.1)) return true;
-    t += d * u_stepFactor;
+    t += marchStep(d);
     if (t > u_maxDist) return false;
   }
   return u_missAsHit;
@@ -1038,7 +1063,7 @@ float shadowVis(vec3 ro, vec3 rd, float maxT, float eps) {
     float tr;
     float h = map(ro + rd * t, tr);
     if (h < eps) return 0.0;
-    t += h * u_stepFactor;
+    t += marchStep(h);
   }
   return 1.0;
 }
