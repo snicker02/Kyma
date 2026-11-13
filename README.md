@@ -1,4 +1,4 @@
-# Kyma v2.13.0
+# Kyma v2.14.0
 
 **Kyma** (κῦμα, Greek for "wave") is a progressive WebGL1 raymarcher for Kali's **Amazing Surf** fractal family. It includes all nine of Mandelbulber's surf formulas, path tracing, volumetric glow and environment lighting. It has no dependencies and no build step. It was formerly *Amazing Surf*; old project files, discovery strings (`SURF2:`) and saved panel layouts still load.
 
@@ -148,7 +148,7 @@ Mandelbulber's *Amazing IFS* (fractal_amazing_ifs.cpp; formula by Kali, features
 
 **Smooth DE (min over iterations)** is Mandelbulber's custom DE (`aux.dist`): the smallest |z|/DE seen from **Smooth DE From Iteration** onwards. Starting at 2–4 lets the large early surfaces win, which gives solid, glossy shells instead of fine lace. Starting at 0 gives the plain bounding box.
 
-Its built-in sphere inversion is Kyma's **Sphere Inversion** (start of iteration). The test suite includes a line-by-line JavaScript port of the Mandelbulber C++ and checks Kyma's distance estimate against it at 480 random points, both linear and smooth DE, to 1e-7. The GPU shader matches the CPU version within 1%.
+Its built-in sphere inversion is the **Mandelbulber Inversion** in the Spherical Inversion panel, which now works with every formula (see below). The test suite includes a line-by-line JavaScript port of the Mandelbulber C++ and checks Kyma's distance estimate against it at 480 random points, both linear and smooth DE, to 1e-7. The GPU shader matches the CPU version within 1%.
 
 **Color Source → Fold amounts (continuous)** is Mandelbulber's extended aux colour for the surf family:
 
@@ -158,6 +158,19 @@ Its built-in sphere inversion is Kyma's **Sphere Inversion** (start of iteration
 Because the sum varies smoothly over a surface, a banded gradient (Circus Stripes, Awning Teal …) wraps the shells in stripes. Keep **Color Iterations** low (3–6) so the stripes follow the big shapes.
 
 Presets: **Striped Shells**, **Ribbon Bowl** and **Ring Reliquary** in the *Amazing IFS* section of the dropdown.
+
+## Spherical inversion: two kinds
+
+The *Spherical Inversion* panel has two independent inversions, and both work with every formula:
+
+| | Kyma inversion (**Enable Inversion**) | **Mandelbulber Inversion** |
+|---|---|---|
+| Maths | z′ = c + (z − c)·R²/\|z − c\|² about centre c | z += O; z *= G/\|z\|²; z += A − O; z *= S: inversion about −O with radius² G, then shift A and scale S |
+| When | Every iteration, Pre-Fold or Post-Fold | Iterations From … Until (default only the first) |
+| Strength | Amount blends with the original | Always full |
+| Derivative | Capped at DE Scale Limit | Exact, like Mandelbulber |
+
+In each iteration the Kyma Pre-Fold inversion runs first, then the axis order and pre-rotation, then the Mandelbulber inversion, then the formula. For Amazing IFS this is exactly where Mandelbulber puts it, so imported files are unchanged.
 
 ## Mandelbulber import & batjorge scenes
 

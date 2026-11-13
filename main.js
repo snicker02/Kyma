@@ -19,7 +19,7 @@ import { BIOMES, evolve, rebirth, encodeDiscovery, decodeDiscovery, makeProject,
 import { wrapPi, clamp } from './engine/vec.js';
 import { Panel } from './ui/panel.js';
 
-export const VERSION = '2.13.0';
+export const VERSION = '2.14.0';
 
 const $ = id => document.getElementById(id);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
@@ -187,7 +187,7 @@ resetViewBtn.addEventListener('click', () => {
 panel.group('view').append(resetViewBtn);
 
 const PRESET_RESET = Object.fromEntries(PARAMS
-  .filter(p => /^(colorSource|foldColW|sphColW|colorIters|gradRepeat|gradWrap|gradReverse|gradHue|gradSat)$/.test(p.id))
+  .filter(p => /^(colorSource|foldColW|sphColW|colorIters|gradRepeat|gradWrap|gradReverse|gradHue|gradSat|gradStops|vSInv\w+|noC|maxStep)$/.test(p.id))
   .map(p => [p.id, p.def]));
 // Presets dropdown, grouped by engine. Picking one applies it (undoable); the
 // list then shows its name until you pick another.

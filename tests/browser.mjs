@@ -67,6 +67,10 @@ void main() { float tr; float d = map(u_p, tr); gl_FragColor = pack(clamp(d / 16
     ['hybrid 3+8/3', { foldType: 3, foldType2: 9, hybridPeriod: 3, foldZ: 0.5 }],
     ['ifs fold+poly', { ...VARIANT_DEFAULTS[10], surfVariant: 10, vIfsX: 1, vIfsY: 1, vIfsZ: 2, vIfsOffX: 0.6, vIfsOffY: 0.3, vIfsOffZ: -0.2, vPreAbsZ: true, vPolyOn: true, polarN: 5, vZFold: true, vIfsAddY: 0.1, alpha: 0.3 }],
     ['object xform', { objX: 0.4, objY: -0.3, objZ: 0.2, objRotX: 20, objRotY: -35, objRotZ: 10, objScale: 1.3 }],
+    ['mb inversion classic', { vSInvOn: true, vSInvOffX: 0.3, vSInvOffZ: -0.2, vSInvG: 1.4, vSInvAddY: 0.2, vSInvA: 1.3, vSInvStop: 2 }],
+    ['mb inversion mod1', { ...VARIANT_DEFAULTS[2], surfVariant: 2, vSInvOn: true, vSInvOffY: -0.4, vSInvG: 0.8, vSInvA: 2.1, vSInvStart: 1, vSInvStop: 3 }],
+    ['mb inversion mod4', { ...VARIANT_DEFAULTS[5], surfVariant: 5, vSInvOn: true, vSInvOffX: 0.5, vSInvG: 1.2, vSInvAddZ: 0.3, vSInvA: 0.9 }],
+    ['mb inversion klein', { ...VARIANT_DEFAULTS[8], surfVariant: 8, vSInvOn: true, vSInvOffZ: 0.6, vSInvG: 1.1, vSInvA: 1.5, vSInvStop: 2 }],
     ['ifs minDE+c', { ...VARIANT_DEFAULTS[10], surfVariant: 10, vIfsX: 1, vIfsY: 1, vIfsOffX: 0.4, vIfsOffY: 0.4, vMinDE: true, vAddC: true, juliaCX: 0.2, juliaCY: -0.3, juliaCZ: 0.1, scaleVary: 0.2, vDEOffset: 0.5 }]];
   const report = [];
   for (const [name, o] of sets) {

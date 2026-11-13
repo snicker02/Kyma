@@ -167,6 +167,16 @@ export function makeDE(v, scaleOverride) {
       const rotOn = i >= v.rotStart;
       if (rotOn && preOn) z = mv(P, z);
       if (rotOn && spinOn) { z = mv(S, z); S = mat3Mul(S, SP); }
+      // Mandelbulber-style sphere inversion, all formulas (mirrors glsl.js).
+      if (v.vSInvOn && i >= (v.vSInvStart | 0) && i < (v.vSInvStop ?? 1)) {
+        const so = [v.vSInvOffX || 0, v.vSInvOffY || 0, v.vSInvOffZ || 0];
+        z = add(z, so);
+        const ri = Math.max(dot3(z), 1e-20), g = v.vSInvG ?? 1;
+        z = mul(z, g / ri); dr *= g / ri;
+        z = add(z, [(v.vSInvAddX || 0) - so[0], (v.vSInvAddY || 0) - so[1], (v.vSInvAddZ || 0) - so[2]]);
+        const a = v.vSInvA ?? 1;
+        z = mul(z, a); dr *= a;
+      }
 
       if (variant === 0) {
         actualScale = scale + v.scaleVary * (abs(actualScale) - 1);
@@ -278,15 +288,6 @@ export function makeDE(v, scaleOverride) {
         if (rotOn) z = mv(R, z);
       } else if (variant === 10) {
         // Amazing IFS — mirrors the SURF_VARIANT 10 block in glsl.js.
-        if (v.vSInvOn && i >= (v.vSInvStart | 0) && i < (v.vSInvStop ?? 1)) {
-          const so = [v.vSInvOffX || 0, v.vSInvOffY || 0, v.vSInvOffZ || 0];
-          z = add(z, so);
-          const ri = dot3(z), g = v.vSInvG ?? 1;
-          z = mul(z, g / ri); dr *= g / ri;
-          z = add(z, [(v.vSInvAddX || 0) - so[0], (v.vSInvAddY || 0) - so[1], (v.vSInvAddZ || 0) - so[2]]);
-          const a = v.vSInvA ?? 1;
-          z = mul(z, a); dr *= a;
-        }
         for (let k = 0; k < 3; k++) if (preAbs[k]) z[k] = abs(z[k]);
         z = add(z, vOff);
         if (v.vPolyOn && i < (v.vPolyStop ?? 1)) {

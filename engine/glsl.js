@@ -175,7 +175,7 @@ uniform bool  u_vMinDE;        // DE = min over iterations of |z|/dr (Mandelbulb
 uniform int   u_vMinDEStart;   // Mandelbulber startIterationsC
 uniform int   u_vMinDEStop;    // Mandelbulber stopIterationsC
 uniform int   u_vPolyStop;     // polyfold runs for iterations [0, stop) (Mandelbulber stopIterationsP1, default 1)
-// Amazing IFS built-in sphere inversion (Mandelbulber transformCommon, iterations [start, stop))
+// Mandelbulber-style sphere inversion, all formulas (transformCommon, iterations [start, stop))
 uniform bool  u_vSInvOn;
 uniform vec3  u_vSInvOff;      // offset000
 uniform float u_vSInvG;        // scaleG1 (r² of the inversion sphere)
@@ -345,6 +345,19 @@ float mapLocal(vec3 p, out float trap) {
     if (rotOn && u_preRotOn) z = u_preRot * z;
     if (rotOn && u_spinOn) { z = spin * z; spin = spin * u_spinMatrix; }
 
+    // Mandelbulber-style sphere inversion (transformCommon, from Amazing IFS),
+    // for every formula: invert about −O with radius² G, shift by A, scale by S,
+    // for iterations [start, stop). Exact derivative, no clamp.
+    if (u_vSInvOn && i >= u_vSInvStart && i < u_vSInvStop) {
+      z += u_vSInvOff;
+      float ri = max(dot(z, z), 1e-20);
+      z *= u_vSInvG / ri;
+      dr *= u_vSInvG / ri;
+      z += u_vSInvAdd - u_vSInvOff;
+      z *= u_vSInvA;
+      dr *= u_vSInvA;
+    }
+
 #if SURF_VARIANT == 0
     actualScale = u_scale + u_scaleVary * (abs(actualScale) - 1.0);
   #ifdef HAS_FOLD_B
@@ -504,16 +517,7 @@ float mapLocal(vec3 p, out float trap) {
 #elif SURF_VARIANT == 10
     // Amazing IFS (Mandelbulber fractal_amazing_ifs.cpp; Kali, DarkBeam): Amazing
     // Surf Mod 4 plus an IFS mirror-and-shift fold, with c off by default.
-    // Built-in sphere inversion, exactly as Mandelbulber (first iteration by default).
-    if (u_vSInvOn && i >= u_vSInvStart && i < u_vSInvStop) {
-      z += u_vSInvOff;
-      float ri = dot(z, z);
-      z *= u_vSInvG / ri;
-      dr *= u_vSInvG / ri;
-      z += u_vSInvAdd - u_vSInvOff;
-      z *= u_vSInvA;
-      dr *= u_vSInvA;
-    }
+    // (Its built-in sphere inversion is the shared Mandelbulber inversion above.)
     if (u_vPreAbs.x > 0.5) z.x = abs(z.x);
     if (u_vPreAbs.y > 0.5) z.y = abs(z.y);
     if (u_vPreAbs.z > 0.5) z.z = abs(z.z);

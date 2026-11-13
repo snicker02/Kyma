@@ -107,7 +107,7 @@ export const VARIANT_DEFAULTS = {
   10: { ...MB_COMMON, scale: 2, minR: 0.5, foldX: 0.5, foldY: 0.5, foldZ: 0.5, vZFold: false, vDEOffset: 0,
     vPreAbsX: false, vPreAbsY: false, vPreAbsZ: false, vIfsX: 0, vIfsY: 0, vIfsZ: 0, vIfsOffX: 0, vIfsOffY: 0, vIfsOffZ: 0,
     vIfsAddX: 0, vIfsAddY: 0, vIfsAddZ: 0, vAddC: false, vMinDE: false, vMinDEStart: 0, vMinDEStop: 250, vPolyStop: 1,
-    vSInvOn: false, vSInvOffX: 0, vSInvOffY: 0, vSInvOffZ: 0, vSInvAddX: 0, vSInvAddY: 0, vSInvAddZ: 0, vSInvG: 1, vSInvA: 1, vSInvStart: 0, vSInvStop: 1, vPolyOn: false, polarN: 6, vOffX: 0, vOffY: 0, vOffZ: 0 },
+ vPolyOn: false, polarN: 6, vOffX: 0, vOffY: 0, vOffZ: 0 },
 };
 
 export const VARIANT_DESC = [
