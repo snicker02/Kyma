@@ -71,6 +71,12 @@ void main() { float tr; float d = map(u_p, tr); gl_FragColor = pack(clamp(d / 16
     ['mb inversion mod1', { ...VARIANT_DEFAULTS[2], surfVariant: 2, vSInvOn: true, vSInvOffY: -0.4, vSInvG: 0.8, vSInvA: 2.1, vSInvStart: 1, vSInvStop: 3 }],
     ['mb inversion mod4', { ...VARIANT_DEFAULTS[5], surfVariant: 5, vSInvOn: true, vSInvOffX: 0.5, vSInvG: 1.2, vSInvAddZ: 0.3, vSInvA: 0.9 }],
     ['mb inversion klein', { ...VARIANT_DEFAULTS[8], surfVariant: 8, vSInvOn: true, vSInvOffZ: 0.6, vSInvG: 1.1, vSInvA: 1.5, vSInvStop: 2 }],
+    ['wave ripple', { waveType: 1, waveAmp: 0.2, waveFreq: 3, wavePhase: 0.5, waveStop: 3 }],
+    ['wave shear mod1', { ...VARIANT_DEFAULTS[2], surfVariant: 2, waveType: 2, waveAmp: 0.3, waveFreq: 2.5, wavePhaseStep: 0.4, waveAxY: -0.5, waveStop: 4 }],
+    ['wave fold', { waveType: 3, waveAmp: 0.6, waveFreq: 2, wavePhase: 1, waveStop: 5 }],
+    ['wave twist mod4', { ...VARIANT_DEFAULTS[5], surfVariant: 5, waveType: 4, waveAmp: 0.5, waveFreq: 2, waveStop: 3 }],
+    ['wave gyroid ifs', { ...VARIANT_DEFAULTS[10], surfVariant: 10, vIfsX: 1, vIfsY: 1, waveType: 5, waveAmp: 0.25, waveFreq: 3, waveStart: 1, waveStop: 4 }],
+    ['wave interference klein', { ...VARIANT_DEFAULTS[8], surfVariant: 8, waveType: 6, waveAmp: 0.3, waveFreq: 2, waveAxZ: 0.5, waveStop: 2 }],
     ['ifs minDE+c', { ...VARIANT_DEFAULTS[10], surfVariant: 10, vIfsX: 1, vIfsY: 1, vIfsOffX: 0.4, vIfsOffY: 0.4, vMinDE: true, vAddC: true, juliaCX: 0.2, juliaCY: -0.3, juliaCZ: 0.1, scaleVary: 0.2, vDEOffset: 0.5 }]];
   const report = [];
   for (const [name, o] of sets) {

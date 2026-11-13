@@ -69,6 +69,20 @@ Object.assign(BIOMES, {
   ifs_ring: { group: 'ifs', label: 'Ring Reliquary', v: { vPolyStop: 250, vMinDEStop: 250, vSInvOn: false, surfVariant: 10, vStack1: 1, vStack2: 0, vStack3: 0, vStack4: 0, vStack5: 0, vFoldValue: 2, vFold2: 2, vZFold: false, vSwapXY: false, vSwapYZ: true, vEvenFlipY: false, vEvenFlipZ: false, vFlip: 0, vCSwizzle: 0, vMboxFold: false, vFixedR2: 1, vDEOffset: 0, vOffX: 0, vOffY: 0, vOffZ: 0, vSphX: 0, vSphY: 0, vSphZ: 0, vPostX: 0, vPostY: 0, vPostZ: 0, vKleinIters: 8, vTailX: 1, vTailY: 1, vTailZ: 0, vTailScale: 2, vTailOffX: 0, vTailOffY: 0, vTailOffZ: 0, vPolyOn: true, vPolyAbsY: true, vPreAbsX: false, vPreAbsY: false, vPreAbsZ: false, vIfsX: 1, vIfsY: 0, vIfsZ: 1, vIfsOffX: 0.2186544418, vIfsOffY: 0.3502332896, vIfsOffZ: 0.496761632, vIfsAddX: 0, vIfsAddY: 0, vIfsAddZ: 0.3919864655, vAddC: false, vMinDE: true, vMinDEStart: 5, scale: 1.550363922, scaleVary: 0, influence: 1, minR: 0.342587595, cylinder: false, foldType: 0, foldType2: 0, hybridPeriod: 2, polarN: 5, axisOrder: 0, tgladWeight: 0, foldX: 0.3186204433, foldY: 0.3988933086, foldZ: 0.2122098446, juliaMode: true, juliaCX: 0, juliaCY: 0, juliaCZ: 0, cMult: 0, preAlpha: 0, preBeta: 0, preGamma: 0, alpha: 0.227340579, beta: -0.2300640345, gamma: -0.354989171, spinX: 0, spinY: 0, spinZ: 0, rotStart: 0, invEnabled: false, invMode: 0, invStrength: 1, invRadius: 1, invDELimit: 10, invCX: 0, invCY: 0, invCZ: 0, iterations: 14, maxSteps: 256, detail: 1, stepFactor: 1, maxDist: 100, missAsHit: false, debugView: 0, renderMode: 0, ptBounces: 3, ptRough: 0.5, ptMetal: 0, ptSun: 2.5, ptLightSize: 0.3, ptSky: 1, ptSkyColor: '#9fb4d9', ptEmit: 0, ptClamp: 20, volDensity: 20, volThick: 0.004, volGlow: 1.2, volLight: 0.5, volStepMin: 0.008, volSteps: 384, rotX: -0.2479092342, rotY: 0.295173955, dist: 11.2, lens: 1, rollX: 0, rollY: 0, rollZ: 0, autoRoll: false, rotSpeed: 0.5, rollAmount: 1, targetX: 0, targetY: 0, targetZ: 0, palette: 29, colorShift: 0, colorSource: 3, foldColW: 1, sphColW: 1, colorIters: 4, gradRepeat: 1, gradWrap: 0, gradReverse: false, gradHue: 0, gradSat: 1, gradC1: '#0b0b2b', gradC2: '#5e2ca5', gradC3: '#e0457b', gradC4: '#ffb347', gradC5: '#fff6d5', lightColor: '#e6f2ff', bgColor: '#0d1a2e', tonemap: 0, brightness: 1.3, vignette: 0.5, dofStrength: 0.15, focalDist: 10.08, envMode: 0, envIntensity: 1, envBlur: 0, envYaw: 0, envPitch: 0, envReflect: 0.4, envLight: 0.5, envFog: true, lightX: 1.5, lightY: 2.5, lightZ: 3, lightRelative: true, ambient: 0.3, volumetric: 1.5, fog: 0.05, stepAO: 1, aoStrength: 0.5, shadows: true, shadowSoft: 12, pulse: false } },
 });
 
+// Kyma Waves: existing scenes with the Wave Warp applied (all formulas).
+const WAVE_OFF = { waveAxX: 1, waveAxY: 1, waveAxZ: 1, wavePhase: 0, wavePhaseStep: 0, waveStart: 0 };
+// Full scenes (defaults under the base preset) so they look the same whatever was loaded before.
+const SCENE_KEYS = Object.keys(BIOMES.ifs_shells.v);
+const sceneDefaults = () => { const d = defaults(); return Object.fromEntries(SCENE_KEYS.map(k => [k, d[k]])); };
+const waved = (base, label, w) => ({ group: 'wave', label, v: { ...sceneDefaults(), ...(base ? BIOMES[base].v : {}), ...WAVE_OFF, ...w } });
+Object.assign(BIOMES, {
+  wave_tide: waved('ocean', 'Gyroid Tide', { waveType: 5, waveAmp: 0.2, waveFreq: 4, waveStop: 3 }),
+  wave_chalice: waved('chalice', 'Rippled Chalice', { waveType: 1, waveAmp: 0.08, waveFreq: 8, waveStop: 2 }),
+  wave_liquid: waved(null, 'Liquid Shear', { waveType: 2, waveAmp: 0.2, waveFreq: 2, wavePhaseStep: 0.5, waveStop: 4 }),
+  wave_reliquary: waved('ifs_ring', 'Rippled Reliquary', { waveType: 1, waveAmp: 0.06, waveFreq: 5, waveStop: 2 }),
+  wave_shells: waved('ifs_shells', 'Wave-Striped Shells', { waveType: 2, waveAmp: 0.1, waveFreq: 4, waveStop: 2 }),
+});
+
 
 const r = (a, b) => a + Math.random() * (b - a);
 const ri = n => Math.floor(Math.random() * n);

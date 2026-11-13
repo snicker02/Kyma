@@ -34,6 +34,7 @@ export const GROUPS = [
   { id: 'ftype',   side: 'left',  title: 'Fold Types', accent: true, open: true },
   { id: 'fold',    side: 'left',  title: 'Folding & Space' },
   { id: 'inv',     side: 'left',  title: 'Spherical Inversion', accent: true },
+  { id: 'wave',    side: 'left',  title: 'Wave Warp', accent: true },
   { id: 'iter',    side: 'left',  title: 'Iteration' },
 
   { id: 'render',  side: 'right', title: 'Render Mode', accent: true, open: true },
@@ -176,6 +177,18 @@ export const PARAMS = [
   { id: 'vSInvA', label: 'Post Scale', type: 'range', group: 'inv', min: 0.1, max: 5, step: 0.001, def: 1, row: 'vsis', gate: 'vSInvOn' },
   { id: 'vSInvStart', label: 'From Iter', type: 'range', group: 'inv', min: 0, max: 20, step: 1, def: 0, int: true, hardMin: 0, hardMax: 249, row: 'vsii', gate: 'vSInvOn' },
   { id: 'vSInvStop', label: 'Until Iter', type: 'range', group: 'inv', min: 1, max: 40, step: 1, def: 1, int: true, hardMin: 1, hardMax: 250, row: 'vsii', gate: 'vSInvOn' },
+
+  // ── Wave Warp (all formulas) ────────────────────────────────────────────
+  { id: 'waveType', label: 'Wave Shape', type: 'select', group: 'wave', options: ['Off', 'Ripple (radial shells)', 'Sine Shear', 'Wave Fold', 'Twist Wave', 'Gyroid Wave', 'Interference'], def: 0, interp: 'step' },
+  { id: 'waveAmp', label: 'Amplitude', type: 'range', group: 'wave', min: -1, max: 1, step: 0.001, def: 0.15, hardMin: -10, hardMax: 10, gate: 'waveType', gateEq: [1, 2, 3, 4, 5, 6], fine: true },
+  { id: 'waveFreq', label: 'Frequency', type: 'range', group: 'wave', min: 0.1, max: 20, step: 0.01, def: 3, hardMin: 0.001, hardMax: 200, gate: 'waveType', gateEq: [1, 2, 3, 4, 5, 6], fine: true },
+  { id: 'wavePhase', label: 'Phase (animate me)', type: 'range', group: 'wave', min: -PI, max: PI, step: 0.001, def: 0, hardMin: -1000, hardMax: 1000, gate: 'waveType', gateEq: [1, 2, 3, 4, 5, 6], fine: true },
+  { id: 'wavePhaseStep', label: 'Phase Shift per Iteration', type: 'range', group: 'wave', min: -PI, max: PI, step: 0.001, def: 0, hardMin: -100, hardMax: 100, gate: 'waveType', gateEq: [1, 2, 3, 4, 5, 6], fine: true },
+  { id: 'waveAxX', label: 'WX', type: 'range', group: 'wave', min: -2, max: 2, step: 0.01, def: 1, row: 'wax', section: 'Axis Weights (Shear / Fold / Gyroid / Interference)', gate: 'waveType', gateEq: [2, 3, 5, 6] },
+  { id: 'waveAxY', label: 'WY', type: 'range', group: 'wave', min: -2, max: 2, step: 0.01, def: 1, row: 'wax', gate: 'waveType', gateEq: [2, 3, 5, 6] },
+  { id: 'waveAxZ', label: 'WZ', type: 'range', group: 'wave', min: -2, max: 2, step: 0.01, def: 1, row: 'wax', gate: 'waveType', gateEq: [2, 3, 5, 6] },
+  { id: 'waveStart', label: 'From Iter', type: 'range', group: 'wave', min: 0, max: 20, step: 1, def: 0, int: true, hardMin: 0, hardMax: 249, row: 'wavi', gate: 'waveType', gateEq: [1, 2, 3, 4, 5, 6] },
+  { id: 'waveStop', label: 'Until Iter', type: 'range', group: 'wave', min: 1, max: 40, step: 1, def: 3, int: true, hardMin: 1, hardMax: 250, row: 'wavi', gate: 'waveType', gateEq: [1, 2, 3, 4, 5, 6] },
 
   // ── Iteration ───────────────────────────────────────────────────────────
   { id: 'iterations', label: 'Iterations', type: 'range', group: 'iter', min: 1, max: 250, step: 1, def: 16, int: true, hardMin: 1, hardMax: 250 },

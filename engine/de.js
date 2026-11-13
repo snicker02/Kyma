@@ -30,6 +30,48 @@ const permuteBy = (z, order) => {
   }
 };
 
+const waveParams = v => ({
+    type: v.waveType | 0, A: v.waveAmp ?? 0, F: v.waveFreq ?? 1, ph: v.wavePhase || 0,
+    step: v.wavePhaseStep || 0, start: v.waveStart | 0, stop: v.waveStop ?? 250,
+    w: [v.waveAxX ?? 1, v.waveAxY ?? 1, v.waveAxZ ?? 1],
+  });
+
+// Wave Warp step (mirrors applyWave in glsl.js). Returns [z, dr].
+export function makeWave(v) {
+  const wave = waveParams(v), abs = Math.abs;
+  return (z, dr, i) => {
+    const { A, F, w } = wave, ph = wave.ph + wave.step * i, AF = abs(A * F);
+    const [x, y, zz] = z;
+    const wmax = Math.max(abs(w[0]), abs(w[1]), abs(w[2]));
+    switch (wave.type) {
+      case 1: {
+        const r = Math.hypot(x, y, zz), g = 1 + A * Math.sin(F * r + ph);
+        return [[x * g, y * g, zz * g], dr * (abs(g) + AF * r)];
+      }
+      case 2:
+        return [[x + A * w[0] * Math.sin(F * y + ph), y + A * w[1] * Math.sin(F * zz + ph), zz + A * w[2] * Math.sin(F * x + ph)], dr * (1 + AF * wmax)];
+      case 3: {
+        const Fs = Math.max(F, 1e-4), cl = t => Math.min(Math.max(t, 0), 1);
+        const f = (c, k) => { const b = cl(abs(A) * w[k]); return c + (Math.sin(F * c + ph) / Fs - c) * b; };
+        return [[f(x, 0), f(y, 1), f(zz, 2)], dr];
+      }
+      case 4: {
+        const th = A * Math.sin(F * zz + ph), c = Math.cos(th), s = Math.sin(th);
+        return [[c * x - s * y, s * x + c * y, zz], dr * (1 + AF * Math.hypot(x, y))];
+      }
+      case 5: {
+        const qx = F * x, qy = F * y, qz = F * zz;
+        return [[x + A * w[0] * Math.sin(qx + ph) * Math.cos(qy), y + A * w[1] * Math.sin(qy + ph) * Math.cos(qz), zz + A * w[2] * Math.sin(qz + ph) * Math.cos(qx)], dr * (1 + AF * Math.SQRT2 * wmax)];
+      }
+      case 6: {
+        const P = Math.sin(F * x + ph) * Math.sin(F * y + ph) * Math.sin(F * zz + ph);
+        return [[x + A * w[0] * P, y + A * w[1] * P, zz + A * w[2] * P], dr * (1 + AF * Math.sqrt(3) * Math.hypot(w[0], w[1], w[2]))];
+      }
+      default: return [z, dr];
+    }
+  };
+}
+
 export function makeDE(v, scaleOverride) {
   const R = fractalRotation(v.alpha, v.beta, v.gamma);
   const P = fractalRotation(v.preAlpha, v.preBeta, v.preGamma);
@@ -151,6 +193,8 @@ export function makeDE(v, scaleOverride) {
   };
   const foldStack = z => { for (const t of stack) if (t) z = stackFold(z, t); return z; };
 
+  const wave = waveParams(v), applyWave = makeWave(v);
+
   const map = function map(p) {
     let z = [p[0], p[1], p[2]];
     let dr = 1, trap = 1e10;
@@ -176,6 +220,10 @@ export function makeDE(v, scaleOverride) {
         z = add(z, [(v.vSInvAddX || 0) - so[0], (v.vSInvAddY || 0) - so[1], (v.vSInvAddZ || 0) - so[2]]);
         const a = v.vSInvA ?? 1;
         z = mul(z, a); dr *= a;
+      }
+      // Wave Warp, all formulas (mirrors applyWave in glsl.js).
+      if (wave.type > 0 && i >= wave.start && i < wave.stop) {
+        const r = applyWave(z, dr, i); z = r[0]; dr = r[1];
       }
 
       if (variant === 0) {

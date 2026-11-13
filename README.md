@@ -1,4 +1,4 @@
-# Kyma v2.14.0
+# Kyma v2.15.0
 
 **Kyma** (κῦμα, Greek for "wave") is a progressive WebGL1 raymarcher for Kali's **Amazing Surf** fractal family. It includes all nine of Mandelbulber's surf formulas, path tracing, volumetric glow and environment lighting. It has no dependencies and no build step. It was formerly *Amazing Surf*; old project files, discovery strings (`SURF2:`) and saved panel layouts still load.
 
@@ -171,6 +171,36 @@ The *Spherical Inversion* panel has two independent inversions, and both work wi
 | Derivative | Capped at DE Scale Limit | Exact, like Mandelbulber |
 
 In each iteration the Kyma Pre-Fold inversion runs first, then the axis order and pre-rotation, then the Mandelbulber inversion, then the formula. For Amazing IFS this is exactly where Mandelbulber puts it, so imported files are unchanged.
+
+## Wave Warp (all formulas)
+
+Kyma (κῦμα) is Greek for *wave*, so the formula loop has a wave stage. It is
+placed like the Mandelbulber inversion: once per iteration, after the axis
+order, pre-rotation, spin and Mandelbulber inversion, and before the formula.
+It runs only for iterations [From Iter, Until Iter), and works with every
+variant.
+
+| Shape | What it does to z each iteration |
+|---|---|
+| Ripple | scales z by 1 + A·sin(F·\|z\| + φ): concentric shells |
+| Sine Shear | x += A·sin(F·y + φ), y += A·sin(F·z + φ), z += A·sin(F·x + φ) |
+| Wave Fold | blends each axis toward sin(F·x + φ)/F, a soft periodic fold (blend = \|A\|·weight) |
+| Twist Wave | rotates XY by A·sin(F·z + φ): a twist that sways along Z |
+| Gyroid Wave | adds A·sin(F·x + φ)·cos(F·y) (cycled over axes): a gyroid lattice |
+| Interference | adds A·sin(F·x + φ)·sin(F·y + φ)·sin(F·z + φ): three standing waves |
+
+- **Phase** shifts the wave. Keyframe it in the sequencer (it interpolates
+  linearly, so 0 → 6.283 is one full cycle) to make the waves flow.
+- **Phase Shift per Iteration** adds to φ each iteration, so deeper iterations
+  are out of step with shallower ones.
+- **Axis Weights** scale each axis for Shear, Fold, Gyroid and Interference.
+- The distance estimate is kept safe: dr is multiplied by a bound on the
+  warp's local stretch, so rays don't overshoot. The tests check this bound
+  numerically for every shape, and check GPU against CPU.
+- Large amplitudes on early iterations can tear a shape apart. Start around
+  A = 0.05–0.2 and Until Iter = 2–3.
+- Presets: the **Kyma Waves** group (Gyroid Tide, Rippled Chalice, Liquid
+  Shear, Rippled Reliquary, Wave-Striped Shells).
 
 ## Mandelbulber import & batjorge scenes
 

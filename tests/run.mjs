@@ -4,7 +4,7 @@ import { PARAMS, GROUPS, defaults, coerce, PARAM_BY_ID } from '../engine/params.
 import { State } from '../engine/state.js';
 import { cameraBasis, pixelRay } from '../engine/camera.js';
 import { fractalRotation, dot, sub, normalize, length, cross, wrapPi, mat3Mul } from '../engine/vec.js';
-import { makeDE, march, viewScore } from '../engine/de.js';
+import { makeDE, makeWave, march, viewScore } from '../engine/de.js';
 import { Sequencer, MODE, EASE } from '../engine/sequencer.js';
 import { encodeDiscovery, decodeDiscovery, evolve, rebirth, makeProject, parseProject, BIOMES } from '../engine/presets.js';
 import { sceneUniforms, jitterFor, lensFor } from '../engine/renderer.js';
@@ -495,6 +495,46 @@ section('object transform');
   }
   ok(worst < 1e-6, `object transform: DE(pos + s·R·q) = s·DE(q) at 200 points (worst rel ${worst.toExponential(1)})`);
   ok(makeDE(base) && makeDE({ ...defs, objScale: 1 }).length === makeDE(base).length, 'identity transform keeps the plain DE');
+}
+
+section('wave warp');
+{
+  const defs = defaults();
+  const { VARIANT_DEFAULTS } = await import('../engine/presets.js');
+  const names = ['', 'ripple', 'sine shear', 'wave fold', 'twist', 'gyroid', 'interference'];
+  for (let t = 1; t <= 6; t++) {
+    // 1. Amplitude 0 is the identity: DE equals the plain formula exactly.
+    const plain = makeDE(defs), zero = makeDE({ ...defs, waveType: t, waveAmp: 0, waveStop: 250 });
+    let same = true;
+    for (let i = 0; i < 50; i++) { const p = [Math.sin(i) * 1.5, Math.cos(i * 1.7), Math.sin(i * 2.3) * 1.2]; if (plain(p).d !== zero(p).d) same = false; }
+    ok(same, `wave ${names[t]}: amplitude 0 leaves the DE unchanged`);
+    // 2. The dr factor bounds the local stretch: |W(p+h) − W(p)| ≤ k(p)·|h| (k = dr factor).
+    for (const [A, F] of [[0.3, 3], [-0.8, 7], [1.5, 0.7]]) {
+      const W = makeWave({ waveType: t, waveAmp: A, waveFreq: F, wavePhase: 0.4, wavePhaseStep: 0.3, waveAxX: 1, waveAxY: -0.6, waveAxZ: 1.4 });
+      let worst = 0;
+      for (let i = 0; i < 400; i++) {
+        const p = [Math.sin(i * 1.1) * 2.5, Math.cos(i * 0.37) * 2.5, Math.sin(i * 2.9 + 1) * 2.5];
+        const [wp, k] = W(p, 1, i % 5);
+        for (let d = 0; d < 6; d++) {
+          const h = [Math.sin(i + d * 3.1), Math.cos(i * 1.3 + d), Math.sin(d * 7.7 - i)].map(x => x * 1e-6);
+          const [wq] = W([p[0] + h[0], p[1] + h[1], p[2] + h[2]], 1, i % 5);
+          worst = Math.max(worst, Math.hypot(wq[0] - wp[0], wq[1] - wp[1], wq[2] - wp[2]) / Math.hypot(...h) / k);
+        }
+      }
+      ok(worst <= 1 + 1e-4, `wave ${names[t]} A=${A} F=${F}: DE derivative bounds the warp (max stretch/k ${worst.toFixed(4)})`);
+    }
+    // 3. Works with every formula and stays finite.
+    let finite = true;
+    for (const variant of [0, 1, 2, 5, 8, 10]) {
+      const m = makeDE({ ...defs, ...(VARIANT_DEFAULTS[variant] || {}), surfVariant: variant, waveType: t, waveAmp: 0.4, waveFreq: 4, waveStop: 4 });
+      for (let i = 0; i < 40; i++) { const d = m([Math.sin(i) * 2, Math.cos(i * 1.3) * 2, Math.sin(i * 0.7) * 2]).d; if (!Number.isFinite(d)) finite = false; }
+    }
+    ok(finite, `wave ${names[t]}: finite DE on Classic, Surf, Mod 1, Mod 4, Klein and Amazing IFS`);
+  }
+  const W = makeWave({ waveType: 1, waveAmp: 0.2, waveFreq: 3, waveStart: 2, waveStop: 4 });
+  ok(W([1, 0, 0], 1, 0)[0][0] !== 1, 'makeWave applies the shape (iteration gating lives in the DE loop)');
+  const gated = makeDE({ ...defs, waveType: 2, waveAmp: 0.5, waveStart: 40, waveStop: 41 });
+  ok(gated([0.3, 0.2, 0.1]).d === makeDE(defs)([0.3, 0.2, 0.1]).d, 'iteration range outside the iteration count has no effect');
 }
 
 section('mandelbulber import');

@@ -128,6 +128,15 @@ uniform int   u_axisOrder;
 uniform float u_tgladWeight;
 uniform float u_cMult;
 uniform bool  u_noC;
+// Wave Warp (Kyma): a per-iteration sine transform for every formula.
+uniform int   u_waveType;      // 0 off, 1 ripple, 2 shear, 3 fold, 4 twist, 5 gyroid, 6 interference
+uniform float u_waveAmp;
+uniform float u_waveFreq;
+uniform float u_wavePhase;
+uniform float u_wavePhaseStep; // phase added per iteration
+uniform int   u_waveStart;
+uniform int   u_waveStop;
+uniform vec3  u_waveAxis;      // per-axis weights (shear / fold / gyroid)
 uniform bool  u_juliaMode;
 uniform bool  u_cylinder;
 uniform vec3  u_juliaC;
@@ -307,6 +316,45 @@ float fmodC(float a, float b) { float q = a / b; return a - b * sign(q) * floor(
 
 const FRAG_TAIL = `
 // ═══ Distance estimator ════════════════════════════════════════════════════
+// Wave Warp. Each shape is a smooth, bounded deformation; dr is scaled by a
+// local upper bound of the Jacobian's norm so the distance estimate stays
+// conservative (rays never overshoot because of the warp).
+void applyWave(inout vec3 z, inout float dr, int i) {
+  float A = u_waveAmp, F = u_waveFreq;
+  float ph = u_wavePhase + u_wavePhaseStep * float(i);
+  float AF = abs(A * F);
+  vec3 w = u_waveAxis;
+  if (u_waveType == 1) {            // Ripple: radial sine shells
+    float r = length(z);
+    float g = 1.0 + A * sin(F * r + ph);
+    z *= g;
+    dr *= abs(g) + AF * r;
+  } else if (u_waveType == 2) {     // Sine Shear: each axis pushed by the next
+    z += A * w * sin(F * z.yzx + ph);
+    dr *= 1.0 + AF * max(max(abs(w.x), abs(w.y)), abs(w.z));
+  } else if (u_waveType == 3) {     // Wave Fold: soft periodic fold, blend = A
+    vec3 s = sin(F * z + ph) / max(F, 1e-4);
+    vec3 b = clamp(abs(A) * w, 0.0, 1.0);
+    z = mix(z, s, b);
+  } else if (u_waveType == 4) {     // Twist Wave: XY rotation waving along Z
+    float th = A * sin(F * z.z + ph);
+    float c = cos(th), sn = sin(th);
+    float rxy = length(z.xy);
+    z.xy = vec2(c * z.x - sn * z.y, sn * z.x + c * z.y);
+    dr *= 1.0 + AF * rxy;
+  } else if (u_waveType == 5) {     // Gyroid Wave: sin·cos lattice displacement
+    vec3 q = F * z;
+    z += A * w * sin(q + ph) * cos(q.yzx);
+    dr *= 1.0 + AF * 1.4142136 * max(max(abs(w.x), abs(w.y)), abs(w.z));
+  } else if (u_waveType == 6) {     // Interference: product of three standing waves
+    vec3 q = F * z + ph;
+    vec3 s = sin(q), c = cos(q);
+    float P = s.x * s.y * s.z;
+    z += A * w * P;
+    dr *= 1.0 + AF * 1.7320508 * length(w);
+  }
+}
+
 // SURF_VARIANT selects the per-iteration formula (compile-time):
 //   0 Classic v2 engine       1 Amazing Surf (Mandelbulber reference)
 //   2 Mod 1   3 Mod 2   4 Mod 3   5 Mod 4   6 Multi   7 M3D   8 Klein   9 Klein V2
@@ -357,6 +405,9 @@ float mapLocal(vec3 p, out float trap) {
       z *= u_vSInvA;
       dr *= u_vSInvA;
     }
+
+    // Wave Warp (all formulas), after the Mandelbulber inversion.
+    if (u_waveType > 0 && i >= u_waveStart && i < u_waveStop) applyWave(z, dr, i);
 
 #if SURF_VARIANT == 0
     actualScale = u_scale + u_scaleVary * (abs(actualScale) - 1.0);
