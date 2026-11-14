@@ -46,6 +46,8 @@ export function sceneUniforms(v, scaleOverride) {
     __foldA: v.foldType,
     __foldB: v.foldType2 - 1,
     __mode: v.renderMode,
+    // Material code is compiled in only when something uses it (HAS_MAT).
+    __mat: !!(v.matOn || (v.texMode | 0) > 0 || (v.creaseAmt || 0) > 0),
     __variant: v.surfVariant,
     __stack: [v.vStack1, v.vStack2, v.vStack3, v.vStack4, v.vStack5],
     u_vFoldValue: v.vFoldValue,
@@ -92,6 +94,36 @@ export function sceneUniforms(v, scaleOverride) {
     u_waveStart: v.waveStart | 0,
     u_waveStop: v.waveStop ?? 250,
     u_waveAxis: [v.waveAxX ?? 1, v.waveAxY ?? 1, v.waveAxZ ?? 1],
+    // Materials & textures (glsl.js "Materials & textures").
+    u_texMode: v.texMode | 0,
+    u_texMap: v.texMap | 0,
+    u_texScale: v.texScale ?? 1,
+    u_texOff: [v.texOffX || 0, v.texOffY || 0],
+    u_texMix: v.texMix ?? 1,
+    u_texBlend: v.texBlend | 0,
+    u_texBump: v.texBump ?? 1,
+    u_texSharp: v.texSharp ?? 4,
+    u_texBlur: v.texBlur || 0,
+    u_texSlot: v.texSlot | 0,
+    u_texFracStart: v.texFracStart | 0,
+    u_texFracCube: v.texFracCube ?? 2,
+    u_matOn: !!v.matOn,
+    u_matAssign: v.matAssign | 0,
+    u_matScale: v.matScale ?? 1,
+    u_matOffset: v.matOffset || 0,
+    u_matSplit: [v.matSplit1 ?? 0.34, v.matSplit2 ?? 0.67],
+    u_matSoft: v.matSoft ?? 0.04,
+    u_matRepeat: !!v.matRepeat,
+    u_matA: [v.matAType | 0, v.matARough ?? 0.4, v.matAAmt ?? 0, v.matAMix || 0],
+    u_matB: [v.matBType | 0, v.matBRough ?? 0.4, v.matBAmt ?? 0, v.matBMix || 0],
+    u_matC: [v.matCType | 0, v.matCRough ?? 0.4, v.matCAmt ?? 0, v.matCMix || 0],
+    u_matTintA: hexToRgb(v.matATint || '#ffffff'),
+    u_matTintB: hexToRgb(v.matBTint || '#ffffff'),
+    u_matTintC: hexToRgb(v.matCTint || '#ffffff'),
+    u_matIor: v.matIor ?? 1.45,
+    u_crease: v.creaseAmt || 0,
+    u_creaseCol: hexToRgb(v.creaseCol || '#2a1408'),
+    u_creaseRad: v.creaseRad ?? 1,
     u_vPolyAbsY: v.vPolyAbsY,
     __tonemap: v.renderMode === 1 ? 1 : v.tonemap, // path tracing outputs linear radiance
     u_ptBounces: v.ptBounces,
@@ -210,11 +242,11 @@ export function specOf(scene, modeOverride) {
   let b = classic ? scene.__foldB | 0 : -1;
   if (b === a) b = -1;
   const stack = STACK_VARIANTS.has(variant) ? (scene.__stack || [1, 0, 0, 0, 0]).map(x => x | 0) : [1, 0, 0, 0, 0];
-  return { a, b, variant, stack, mode: (modeOverride ?? scene.__mode) | 0 };
+  return { a, b, variant, stack, mode: (modeOverride ?? scene.__mode) | 0, mat: !!scene.__mat };
 }
 
 export function specKey(sp) {
-  return `v${sp.variant}|${sp.a}|${sp.b}|${sp.stack.join('')}|m${sp.mode}`;
+  return `v${sp.variant}|${sp.a}|${sp.b}|${sp.stack.join('')}|m${sp.mode}${sp.mat ? '|mat' : ''}`;
 }
 
 // Back-compat helper (classic engine).
@@ -237,11 +269,13 @@ export class Renderer {
     if (!gl) throw new Error('WebGL is not available in this browser.');
     this.gl = gl;
     this.envTex = null; // old context's texture is gone; envSource survives for re-upload
+    this.matTex = null; // likewise matSource
     this.fmt = detectAccumFormat(gl);
     this.parallel = gl.getExtension('KHR_parallel_shader_compile');
     this.texLod = !!gl.getExtension('EXT_shader_texture_lod');
     this.maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE);
     this._uploadEnv();
+    this._uploadMat();
     this.programs = new Map(); // key → { ready, prog?, pending?, error? }
     this.display = compileProgram(gl, VERT, DISPLAY_FRAG);
     // The default (box fold) program is built synchronously so first paint is immediate.
@@ -292,6 +326,37 @@ export class Renderer {
     this.envTex = tex;
   }
 
+  // Material texture (unit 3): a power-of-two canvas from engine/textures.js,
+  // mipmapped and REPEAT-wrapped so it tiles. `aspect` = source width / height.
+  setMaterialTexture(canvas, aspect = 1) {
+    this.matSource = canvas || null;
+    this.matAspect = aspect;
+    this._uploadMat();
+  }
+
+  _uploadMat() {
+    const gl = this.gl;
+    if (this.matTex) gl.deleteTexture(this.matTex);
+    const tex = gl.createTexture();
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    if (this.matSource) {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, this.matSource);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    } else {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, 1, 1, 0, gl.RGB, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255]));
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    }
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+    gl.activeTexture(gl.TEXTURE0);
+    this.matTex = tex;
+    this.matSize = this.matSource ? this.matSource.width : 1;
+  }
+
   get sampleCap() { return this.fmt.maxSamples; }
 
   // Returns the compiled program for a scene (optionally forcing a render
@@ -317,7 +382,7 @@ export class Renderer {
 
   _startCompile(sp) {
     const gl = this.gl;
-    const opts = { texLod: this.texLod, mode: sp.mode, variant: sp.variant, stack: sp.stack };
+    const opts = { texLod: this.texLod, mode: sp.mode, variant: sp.variant, stack: sp.stack, mat: sp.mat };
     const a = sp.a, b = sp.b;
     if (!this.parallel) {
       try { return { ready: true, prog: compileProgram(gl, VERT, fractalFrag(a, b, opts)) }; }
@@ -394,6 +459,8 @@ export class Renderer {
     gl.useProgram(prog.prog);
     gl.activeTexture(gl.TEXTURE1);
     gl.bindTexture(gl.TEXTURE_2D, this.envTex);
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, this.matTex);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, src.tex);
     setUniforms(gl, prog, scene);
@@ -406,6 +473,9 @@ export class Renderer {
       u_prev: 0,
       u_env: 1,
       u_grad: 2,
+      u_matTex: 3,
+      u_texSize: this.matSize || 1,
+      u_texAspect: this.matAspect || 1,
       u_envAspect: this.envAspect ?? 2,
       u_blend: 1 / (sampleIndex + 1),
       u_sampleIndex: sampleIndex,

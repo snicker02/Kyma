@@ -16,6 +16,7 @@ const browser = await chromium.launch({
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
 });
 const page = await browser.newPage({ viewport: { width: 720, height: 450 } });
+page.setDefaultTimeout(600000); // SwiftShader on small machines blocks the page for long stretches
 const errors = [];
 page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
 page.on('pageerror', e => errors.push(String(e)));
@@ -24,13 +25,13 @@ let fail = 0;
 const ok = (c, m) => { console.log((c ? '  ok   ' : '  FAIL ') + m); if (!c) fail++; };
 
 await page.goto(URL);
-await page.waitForFunction(() => window.__surf && window.__surf.renderer.live.samples > 0, null, { timeout: 60000 });
+await page.waitForFunction(() => window.__surf && window.__surf.renderer.live.samples > 0, null, { timeout: 600000 });
 const fmt = await page.evaluate(() => window.__surf.renderer.fmt.name);
 ok(true, `booted, accumulation format ${fmt}`);
 
 // Progressive accumulation advances when idle.
 await page.evaluate(() => window.__surf.state.set('maxSamples', 6));
-await page.waitForFunction(() => window.__surf.renderer.live.samples >= 6, null, { timeout: 120000 });
+await page.waitForFunction(() => window.__surf.renderer.live.samples >= 6, null, { timeout: 600000 });
 ok(true, 'accumulated 6 samples while idle');
 await page.screenshot({ path: `${OUT}/default.png` });
 
@@ -156,14 +157,14 @@ for (const key of ['default', ...Object.keys(await page.evaluate(async () => (aw
   }, key);
   const t0 = Date.now();
   await page.waitForFunction(() => window.__surf.renderer.live.samples >= window.__surf.state.values.maxSamples && !window.__surf.renderer.isCompiling(), null, { timeout: 600000 });
-  await page.screenshot({ path: `${OUT}/biome-${key}.png`, timeout: 180000 });
+  await page.screenshot({ path: `${OUT}/biome-${key}.png`, timeout: 600000 });
   console.log(`  shot  ${key} (${((Date.now() - t0) / 1000).toFixed(1)} s)`);
 }
 ok(true, `screenshots in ${OUT}`);
 // Back to a cheap render before the layout checks: a full-res frame of the last
 // preset can take most of a minute on SwiftShader and starve the resize check.
 await page.evaluate(() => window.__surf.state.setMany({ renderScale: 0.25, maxSamples: 1 }));
-await page.waitForFunction(() => window.__surf.renderer.live.samples >= 1, null, { timeout: 180000 });
+await page.waitForFunction(() => window.__surf.renderer.live.samples >= 1, null, { timeout: 600000 });
 
 // ── UI wiring: buttons that were dead in v1, keyframes, export downloads ──
 page.on('dialog', d => d.accept());
@@ -184,7 +185,7 @@ const layout = await page.evaluate(() => {
   return { left: r('dockLeft'), right: r('dockRight'), stage: r('stage'), cw: c.width, ch: c.height };
 });
 ok(layout.left.right <= layout.stage.left + 1 && layout.stage.right <= layout.right.left + 1, `docks flank the viewer (L ${layout.left.width}px · stage ${layout.stage.width}px · R ${layout.right.width}px)`);
-await page.waitForFunction(() => { const c = document.getElementById('view'); return c.width === c.clientWidth && c.height === c.clientHeight; }, null, { timeout: 60000 });
+await page.waitForFunction(() => { const c = document.getElementById('view'); return c.width === c.clientWidth && c.height === c.clientHeight; }, null, { timeout: 600000 });
 ok(true, 'canvas backing size tracks the centre cell');
 // Every dock combination must give the viewer the remaining width.
 for (const [cls, label] of [[[], 'both docks'], [['no-left'], 'left hidden'], [['no-right'], 'right hidden'], [['no-left', 'no-right'], 'both hidden']]) {
@@ -201,7 +202,7 @@ await page.keyboard.press('BracketLeft');
 await page.waitForTimeout(200);
 ok(await page.evaluate(() => document.getElementById('app').classList.contains('no-left')), '[ hides the left dock');
 await page.keyboard.press('BracketLeft');
-await page.screenshot({ path: `${OUT}/layout-docked.png`, timeout: 180000 });
+await page.screenshot({ path: `${OUT}/layout-docked.png`, timeout: 600000 });
 await page.evaluate(() => { const s = window.__surf; s.state.resetAll(); s.state.setMany({ maxSamples: 1, renderScale: 0.25, exportSamples: 1 }); });
 const clickText = t => page.locator('button', { hasText: t }).first().click({ timeout: 180000, noWaitAfter: true });
 const before = await page.evaluate(() => JSON.stringify(window.__surf.state.values));
@@ -219,7 +220,7 @@ ok(await page.evaluate(() => JSON.stringify(window.__surf.state.values)) !== aft
 const disc = await page.evaluate(async () => (await import('/engine/presets.js')).encodeDiscovery(window.__surf.state.values));
 await page.evaluate(() => window.__surf.state.resetAll());
 await clickText('Load String');
-await page.fill('#discText', disc, { timeout: 180000 });
+await page.fill('#discText', disc, { timeout: 600000 });
 await page.click('#discLoad', { timeout: 180000, noWaitAfter: true });
 const reloaded = await page.evaluate(async () => (await import('/engine/presets.js')).encodeDiscovery(window.__surf.state.values));
 ok(reloaded === disc, 'discovery string loads through the dialog');
@@ -232,7 +233,7 @@ await page.evaluate(() => window.__surf.state.setMany({ rotX: 1.0, dist: 3 }));
 await page.keyboard.press('KeyK');
 ok(await page.evaluate(() => window.__surf.seq.length) === 2, 'K adds keyframes');
 await page.keyboard.press('Space');
-await page.waitForFunction(() => !window.__surf.seq.playing, null, { timeout: 120000 });
+await page.waitForFunction(() => !window.__surf.seq.playing, null, { timeout: 600000 });
 const endDist = await page.evaluate(() => window.__surf.state.values.dist);
 ok(Math.abs(endDist - 3) < 1e-6, `sequence ends on last key (dist ${endDist})`);
 
@@ -251,7 +252,7 @@ await zipFile.saveAs(zipPath);
 ok(/kyma-frames-\d{3,}x\d{3,}-.*\.zip$/.test(zipPath), `frames zip downloaded: ${zipFile.suggestedFilename()}`);
 
 // Save Image → PNG download (button lives in the right dock).
-const dl2 = page.waitForEvent('download', { timeout: 300000 });
+const dl2 = page.waitForEvent('download', { timeout: 600000 });
 await clickText('Save Image');
 const png = await dl2;
 await png.saveAs(`${OUT}/${png.suggestedFilename()}`);
@@ -264,7 +265,7 @@ ok(/\.png$/.test(png.suggestedFilename()), `image downloaded: ${png.suggestedFil
   const frames = f => { try { return +execFileSync('ffprobe', ['-v','error','-count_frames','-select_streams','v:0','-show_entries','stream=nb_read_frames','-of','csv=p=0', f]).toString().trim(); } catch { return 0; } };
   await page.evaluate(() => { const s = window.__surf; s.seq.clear(); s.state.setMany({ renderScale: 0.25, maxSamples: 1, recMode: 0, recRes: 1, recQuality: 1 }); });
   await page.waitForTimeout(1500);
-  let dlv = page.waitForEvent('download', { timeout: 60000 });
+  let dlv = page.waitForEvent('download', { timeout: 600000 });
   await page.click('#recVideo');
   await page.waitForTimeout(2000);
   await page.click('#recVideo');
@@ -272,7 +273,7 @@ ok(/\.png$/.test(png.suggestedFilename()), `image downloaded: ${png.suggestedFil
   const stillFrames = frames(vp);
   ok(stillFrames > 10, `record still view → ${vid.suggestedFilename()} has ${stillFrames} frames`);
   await page.evaluate(() => { const s = window.__surf; s.state.setMany({ seqDuration: 1, seqMode: 1 }); s.seq.add(s.state.sceneSnapshot()); s.state.setMany({ rotX: s.state.values.rotX + 0.4 }); s.seq.add(s.state.sceneSnapshot()); });
-  dlv = page.waitForEvent('download', { timeout: 120000 });
+  dlv = page.waitForEvent('download', { timeout: 600000 });
   await page.click('#recVideo');
   await page.waitForFunction(() => /REC/.test(document.getElementById('hud').textContent), null, { timeout: 30000 }).catch(() => {});
   const mid = await page.evaluate(() => ({ playing: window.__surf.seq.playing, hud: document.getElementById('hud').textContent }));
@@ -285,9 +286,13 @@ ok(/\.png$/.test(png.suggestedFilename()), `image downloaded: ${png.suggestedFil
   // Real-time at a chosen resolution: the drawing buffer is resized for the
   // recording (letterboxed on screen) and handed back to the layout afterwards.
   await page.evaluate(() => window.__surf.state.setMany({ recMode: 0, recRes: 2, recFormat: 1 }));
-  dlv = page.waitForEvent('download', { timeout: 120000 });
+  dlv = page.waitForEvent('download', { timeout: 600000 });
   await page.evaluate(() => document.getElementById('recVideo').click());
-  await page.waitForTimeout(5000); // software VP9 at 720p needs a few seconds under load to emit anything
+  // Wait for real frames (a 720p SwiftShader frame can take longer than any fixed delay),
+  // then a few seconds so software VP9 emits something.
+  await page.waitForFunction(() => document.getElementById('view').width === 1280, null, { timeout: 600000 }); // resized (accumulation reset)
+  await page.waitForFunction(() => window.__surf.renderer.live.samples >= 1, null, { timeout: 600000 }); // and drawn
+  await page.waitForTimeout(4000);
   const during = await page.evaluate(() => [canvas => [canvas.width, canvas.height]][0](document.getElementById('view')));
   await page.evaluate(() => document.getElementById('recVideo').click());
   vid = await dlv.catch(async e => { throw new Error(`real-time 720p: no download — toast "${await page.textContent('#toast')}" (${e.message.split('\n')[0]})`); });
@@ -309,7 +314,7 @@ ok(/\.png$/.test(png.suggestedFilename()), `image downloaded: ${png.suggestedFil
   await page.waitForTimeout(500);
   for (const [fmt, codec] of [[0, 'h264'], [1, 'vp9']]) {
     await page.evaluate(f => window.__surf.state.setMany({ recFormat: f }), fmt);
-    dlv = page.waitForEvent('download', { timeout: 300000 });
+    dlv = page.waitForEvent('download', { timeout: 600000 });
     await page.evaluate(() => document.getElementById('recVideo').click());
     vid = await dlv; vp = `${OUT}/off-${vid.suggestedFilename()}`; await vid.saveAs(vp);
     const info = execFileSync('ffprobe', ['-v','error','-count_frames','-select_streams','v:0','-show_entries','stream=codec_name,nb_read_frames,r_frame_rate','-of','csv=p=0', vp]).toString().trim();
@@ -337,7 +342,7 @@ ok(/\.png$/.test(png.suggestedFilename()), `image downloaded: ${png.suggestedFil
   for (const [type, mode] of [[5, 0], [7, 1], [3, 2]]) {
     await page.evaluate(([t, m]) => window.__surf.state.setMany({ groundType: t, renderMode: m, maxSamples: 1 }), [type, mode]);
     await page.waitForTimeout(300);
-    const okR = await page.waitForFunction(() => window.__surf.renderer.live.samples >= 1 && !window.__surf.renderer.isCompiling(), null, { timeout: 300000 }).then(() => true).catch(() => false);
+    const okR = await page.waitForFunction(() => window.__surf.renderer.live.samples >= 1 && !window.__surf.renderer.isCompiling(), null, { timeout: 600000 }).then(() => true).catch(() => false);
     ok(okR, `ground type ${type} renders in mode ${mode}`);
   }
   await page.evaluate(() => window.__surf.state.setMany({ groundType: 0, renderMode: 0 }));
@@ -409,7 +414,76 @@ await page.evaluate(() => {
   window.__surf.state.setMany({ juliaMode: false, shadows: true, foldType: 7, foldType2: 5, maxSamples: 1, renderScale: 0.25 });
 });
 await page.waitForTimeout(500);
-await page.screenshot({ path: `${OUT}/ui-full.png`, timeout: 180000 });
+await page.screenshot({ path: `${OUT}/ui-full.png`, timeout: 600000 });
+
+// ── Materials, textures, crease (render, differ from the classic look, no NaN) ──
+{
+  const shoot = async over => {
+    await page.evaluate(async o => {
+      const { BIOMES } = await import('/engine/presets.js');
+      const s = window.__surf; s.state.resetAll();
+      s.state.setMany({ ...BIOMES.ifs_ring.v, dist: 6, maxSamples: 1, renderScale: 0.2, ...o });
+      s.renderer.resetLive(); // no stale frame from the previous case
+    }, over);
+    await page.waitForFunction(() => window.__surf.renderer.live.samples >= 1 && !window.__surf.renderer.isCompiling(), null, { timeout: 600000 });
+    return page.evaluate(() => {
+      const c = document.getElementById('view'), g = c.getContext('webgl');
+      const w = c.width, h = c.height, buf = new Uint8Array(w * h * 4);
+      g.readPixels(0, 0, w, h, g.RGBA, g.UNSIGNED_BYTE, buf);
+      return Array.from(buf.filter((_, i) => i % 16 === 0)); // every 4th pixel's R channel
+    });
+  };
+  const diff = (a, b) => a.reduce((s, x, i) => s + Math.abs(x - b[i]), 0) / a.length;
+  const base = await shoot({});
+  const cases = [
+    ['metal', { matOn: true, matAssign: 0, matAType: 1, matAAmt: 1, matAMix: 0.5, matATint: '#e2b86a' }],
+    ['glass', { matOn: true, matAssign: 0, matAType: 2, matAAmt: 0.85, matAMix: 0.5, matATint: '#bfe6ff' }],
+    ['iridescent', { matOn: true, matAssign: 0, matAType: 3, matAAmt: 0.5 }],
+    ['glow', { matOn: true, matAssign: 0, matAType: 4, matAAmt: 1.5, matAMix: 1, matATint: '#ff8000' }],
+    ['3 slots by fold count', { matOn: true, matAssign: 1 }],
+    ['triplanar texture + bump', { texMode: 3, texSrc: 2, texScale: 3 }],
+    ['fractalized texture', { texMode: 1, texSrc: 2, texMap: 1, texFracStart: 3, texScale: 0.5, texBlend: 2 }],
+    ['crease tint', { creaseAmt: 0.8, creaseCol: '#ff3010' }],
+    ['path traced materials', { renderMode: 1, matOn: true, matAssign: 1, matBType: 2 }],
+  ];
+  const same = await shoot({ matOn: false, texMode: 0, creaseAmt: 0 });
+  ok(diff(base, same) < 0.5, `materials off renders the classic image (mean diff ${diff(base, same).toFixed(2)})`);
+  for (const [name, o] of cases) {
+    const px = await shoot(o);
+    const d = diff(base, px);
+    ok(d > 1 && px.some(x => x > 0), `${name}: renders and changes the image (mean diff ${d.toFixed(1)})`);
+  }
+}
+
+// ── Mutation grid ──
+{
+  await page.evaluate(async () => {
+    const { BIOMES } = await import('/engine/presets.js');
+    const s = window.__surf; s.state.resetAll();
+    s.state.setMany({ ...BIOMES.ifs_shells.v, maxSamples: 1, renderScale: 0.2 });
+    s.mutGrid.maxSamples = 1;
+    s.mutGrid.open();
+  });
+  await page.waitForFunction(() => window.__surf.mutGrid.tiles.every(t => t.samples >= 1), null, { timeout: 900000 });
+  const r = await page.evaluate(() => {
+    const g = window.__surf.mutGrid, s = window.__surf.state, before = { ...s.values };
+    const lit = g.tiles.filter(t => { const d = t.cv.getContext('2d').getImageData(0, 0, t.cv.width, t.cv.height).data; let n = 0; for (let i = 0; i < d.length; i += 4) n += d[i] + d[i + 1] + d[i + 2]; return n > 0; }).length;
+    const i = g.tiles.findIndex((t, k) => k !== g.parentIndex && Object.keys(t.diff).length);
+    const dk = g.tiles[i].diff;
+    g.tiles[i].cell.click();
+    const applied = Object.entries(dk).every(([k, v]) => s.values[k] === v);
+    g.back();
+    const restored = Object.keys(dk).every(k => s.values[k] === before[k]);
+    const kinds = new Set(g.tiles.map(t => JSON.stringify(t.diff))).size;
+    return { n: g.tiles.length, lit, applied, restored, kinds, live: window.__surf.renderer.live.samples };
+  });
+  ok(r.n === 9 && r.lit === 9, `mutation grid: 9 tiles rendered (${r.lit} lit)`);
+  ok(r.kinds === 9, 'mutation grid: parent + 8 different children');
+  ok(r.applied && r.restored, 'mutation grid: click breeds from the child, Back restores the parent');
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !window.__surf.mutGrid.isOpen && window.__surf.renderer.live.samples >= 1, null, { timeout: 600000 });
+  ok(true, 'mutation grid: Esc closes and the viewer resumes');
+}
 
 ok(errors.length === 0, `no console errors${errors.length ? ':\n' + errors.join('\n') : ''}`);
 await browser.close();

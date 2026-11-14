@@ -18,8 +18,10 @@ import { VARIANT_DEFAULTS, VARIANT_DESC } from './engine/presets.js';
 import { BIOMES, evolve, rebirth, encodeDiscovery, decodeDiscovery, makeProject, parseProject } from './engine/presets.js';
 import { wrapPi, clamp } from './engine/vec.js';
 import { Panel } from './ui/panel.js';
+import { MutationGrid } from './ui/mutation.js';
+import { proceduralTexture, imageTexture, TEX_KEYS } from './engine/textures.js';
 
-export const VERSION = '2.15.0';
+export const VERSION = '2.16.1';
 
 const $ = id => document.getElementById(id);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
@@ -187,7 +189,7 @@ resetViewBtn.addEventListener('click', () => {
 panel.group('view').append(resetViewBtn);
 
 const PRESET_RESET = Object.fromEntries(PARAMS
-  .filter(p => /^(colorSource|foldColW|sphColW|colorIters|gradRepeat|gradWrap|gradReverse|gradHue|gradSat|gradStops|vSInv\w+|wave\w+|noC|maxStep)$/.test(p.id))
+  .filter(p => /^(colorSource|foldColW|sphColW|colorIters|gradRepeat|gradWrap|gradReverse|gradHue|gradSat|gradStops|vSInv\w+|wave\w+|mat\w+|crease\w+|tex\w+|noC|maxStep)$/.test(p.id))
   .map(p => [p.id, p.def]));
 // Presets dropdown, grouped by engine. Picking one applies it (undoable); the
 // list then shows its name until you pick another.
@@ -461,6 +463,49 @@ $('stage').addEventListener('drop', e => {
 });
 state.onChange((id, v) => { if (id === 'envMode' && v > 0 && !envInfo) applyEnv(proceduralEnv('studio'), v); });
 
+// ── Material texture ────────────────────────────────────────────────────────
+// Procedural textures are built on demand (cached); a loaded image stays for
+// the session. Image source "Loaded Image" with nothing loaded falls back to Marble.
+let texImage = null, texShown = '';
+const matGroup = panel.group('mat');
+{
+  const head = el('div', 'sub-head', '<span>Texture Image</span>');
+  const badge = el('span', 'gate-badge off', 'NONE');
+  head.append(badge);
+  const load = el('button', 'action-btn sm', 'Load Texture Image…');
+  const clear = el('button', 'action-btn sm danger', 'Clear Image');
+  const file = el('input'); file.type = 'file'; file.accept = 'image/*'; file.hidden = true;
+  const note = el('div', 'seq-hint', 'Any image tiles. Surface mapping wraps it seamlessly over the fractal; Fractalized mapping uses the orbit like Mandelbulber (Jorge’s scenes). Metal and glass look best with an Environment image.');
+  note.style.marginTop = '-6px';
+  matGroup.append(head, row2(load, clear), note, file);
+  load.addEventListener('click', () => file.click());
+  file.addEventListener('change', async () => {
+    const f = file.files[0]; file.value = '';
+    if (!f) return;
+    try {
+      texImage = await imageTexture(f, renderer.maxTex);
+      pushHistory();
+      state.setMany({ texSrc: 0, texMode: state.values.texMode || 1 });
+      syncMatTexture(true);
+      toast(`Texture: ${texImage.name}`);
+    } catch (e) { toast(e.message, 3000); }
+  });
+  clear.addEventListener('click', () => { texImage = null; syncMatTexture(true); toast('Texture image cleared'); });
+  var texBadge = badge;
+}
+function syncMatTexture(force = false) {
+  const v = state.values;
+  if (!v.texMode && !force) return;
+  let key = TEX_KEYS[v.texSrc] || null, src;
+  if (!key && texImage) src = texImage;
+  else src = proceduralTexture(key || 'marble');
+  const sig = src.name + '|' + src.canvas.width;
+  if (sig !== texShown || force) { renderer.setMaterialTexture(src.canvas, src.aspect); texShown = sig; state.bump(); }
+  texBadge.textContent = texImage ? (texImage.name.length > 18 ? texImage.name.slice(0, 16) + '…' : texImage.name) : 'NONE';
+  texBadge.className = 'gate-badge ' + (texImage ? 'on' : 'off');
+}
+state.onChange(id => { if (id == null || id === 'texSrc' || id === 'texMode') syncMatTexture(); });
+
 // ── Auto-fix cut-offs ───────────────────────────────────────────────────────
 // Rays that exhaust Max Ray Steps are drawn as background ("cut-off"). This
 // usually means the DE plateaus just above the hit threshold, so we probe the
@@ -542,7 +587,14 @@ const resetAllBtn = el('button', 'action-btn sm danger', 'Reset All');
 const saveProjBtn = el('button', 'action-btn sm', 'Save Project');
 const openProjBtn = el('button', 'action-btn sm', 'Open Project');
 const row = (...b) => { const r = el('div', 'grid grid-2'); r.append(...b); return r; };
-$('footLeft').append(row(evolveBtn, rebirthBtn), row(undoBtn, redoBtn));
+const gridBtn = el('button', 'action-btn', '▦ Mutation Grid');
+$('footLeft').append(row(evolveBtn, rebirthBtn), gridBtn, row(undoBtn, redoBtn));
+const mutGrid = new MutationGrid({
+  renderer, state, stage: $('stage'), toast,
+  onPick: (values, full) => { pushHistory(); state.setMany(values); },
+  onClose: () => { renderer.resetLive(); lastSig = ''; },
+});
+gridBtn.addEventListener('click', () => { if (seq.playing) seq.stop?.(); mutGrid.open(); });
 $('footRight').append(copyBtn, row(loadBtn, resetAllBtn), row(saveProjBtn, openProjBtn));
 syncUndoButtons();
 
@@ -1057,7 +1109,7 @@ function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min((now - last) / 1000, 0.1);
   last = now;
-  if (busy || contextLost) return;
+  if (busy || contextLost || mutGrid.isOpen) return;
 
   const v = state.values;
   if (seq.playing) {
@@ -1117,8 +1169,14 @@ function frame(now) {
     if (drew || recorder) renderer.presentLive();
   } catch (e) {
     console.error(e);
-    toast('Shader build failed for this combination — reverting to surface / box fold', 4000);
-    state.setMany({ foldType: 0, foldType2: 0, renderMode: 0, surfVariant: 0 });
+    if (scene.__mat) {
+      // Keep the formula; drop the optional material layer this GPU couldn't build.
+      toast('This GPU could not build the materials / texture shader — materials, texture and crease turned off', 5000);
+      state.setMany({ matOn: false, texMode: 0, creaseAmt: 0 });
+    } else {
+      toast('Shader build failed for this combination — reverting to surface / box fold', 4000);
+      state.setMany({ foldType: 0, foldType2: 0, renderMode: 0, surfVariant: 0 });
+    }
   }
 
   if (now - hudTimer > 200) {
@@ -1133,4 +1191,4 @@ function frame(now) {
 requestAnimationFrame(frame);
 
 // Debug / test hook.
-window.__surf = { state, seq, renderer, VERSION };
+window.__surf = { state, seq, renderer, VERSION, mutGrid };

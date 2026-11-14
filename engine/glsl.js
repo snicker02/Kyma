@@ -296,6 +296,17 @@ float g_sphCol;
 float g_boxAmt; // Σ (|z| − 1) over components a box fold reflected (Mandelbulber difs.xyz)
 float g_sphAmt; // Σ (r² − minR²)/100 where the sphere fold left z outside minR (difs.w)
 float g_colOn; // 1 while the current iteration counts toward the colour
+// Texture "fractalize" probe (Mandelbulber calcModeCubeOrbitTrap): when set,
+// mapLocal records the first orbit point, from u_texFracStart on, that lies in
+// a cube of half-size u_texFracCube around the start point.
+#ifdef HAS_MAT
+uniform int   u_texFracStart;
+uniform float u_texFracCube;
+bool  g_texProbe = false;
+bool  g_texDone = false;
+vec3  g_texZ = vec3(0.0);
+float g_orbit = 0.0; // raw orbit trap min |z|² (before any colour-source override)
+#endif
 vec2 boxXY(vec2 v, vec2 f) {
   vec2 hit = step(f, abs(v));
   vec2 r = abs(v + f) - abs(v - f) - v;
@@ -364,6 +375,9 @@ void applyWave(inout vec3 z, inout float dr, int i) {
 // The app-level transforms — inversion, axis swap, pre-rotation, spin — wrap
 // every variant.
 float mapLocal(vec3 p, out float trap) {
+#ifdef HAS_MAT
+  g_texDone = false;
+#endif
   g_boxCol = 0.0;
   g_sphCol = 0.0;
   g_boxAmt = 0.0;
@@ -643,10 +657,21 @@ float mapLocal(vec3 p, out float trap) {
     if (u_invEnabled && u_invMode == 1) sphereInvert(z, dr);
 
     trap = min(trap, dot(z, z));
+#ifdef HAS_MAT
+    if (g_texProbe && !g_texDone && i >= u_texFracStart) {
+      vec3 zz = abs(z - p);
+      if (max(zz.x, max(zz.y, zz.z)) < u_texFracCube) { g_texZ = z; g_texDone = true; }
+      else if (length(z) > u_texFracCube * 100.0) { g_texZ = z / length(z); g_texDone = true; }
+    }
+#endif
 #if SURF_VARIANT != 0
     if (dot(z, z) > 10000.0) break; // Mandelbulber bailout 100
 #endif
   }
+#ifdef HAS_MAT
+  g_orbit = trap;
+  if (g_texProbe && !g_texDone) g_texZ = z;
+#endif
   if (u_colorSource == 3) {
     // ×2.5 cancels the shader's trap·0.4, so one weighted unit = one index unit.
     trap = (g_boxAmt * u_foldColW + g_sphAmt * u_sphColW) * 2.5;
@@ -932,6 +957,244 @@ vec2 hash22(vec2 p) {
 }
 
 // Primary camera ray (AA jitter + thin-lens DOF), shared by every render mode.
+// ═══ Materials & textures ══════════════════════════════════════════════════
+// Compiled only into programs with HAS_MAT (materials on, a texture, or crease
+// tint): scenes without them use exactly the classic shader. Each mode calls
+// evalSurface() from one place, and every extra fractal evaluation sits in a
+// single loop, because D3D-backed WebGL (Windows) inlines every call to map()
+// and a long shader can fail to compile there.
+#ifdef HAS_MAT
+uniform sampler2D u_matTex;   // unit 3: loaded image or procedural texture (POT, mipmapped, REPEAT)
+uniform float u_texSize;      // texture width in texels (for the triplanar LOD)
+uniform float u_texAspect;    // width / height of the source image
+uniform int   u_texMode;      // 0 off, 1 colour, 2 bump, 3 colour + bump
+uniform int   u_texMap;       // 0 triplanar on the surface (object frame), 1 fractalized orbit
+uniform float u_texScale;     // tiles per unit
+uniform vec2  u_texOff;
+uniform float u_texMix;
+uniform int   u_texBlend;     // 0 multiply, 1 overlay, 2 replace, 3 screen
+uniform float u_texBump;
+uniform float u_texSharp;
+uniform float u_texBlur;
+uniform int   u_texSlot;      // 0 all, 1..3 = slot A..C
+uniform bool  u_matOn;
+uniform int   u_matAssign;    // 0 single, 1 folds, 2 orbit, 3 colour index, 4 crease, 5 height, 6 facing up
+uniform float u_matScale;
+uniform float u_matOffset;
+uniform vec2  u_matSplit;     // A|B and B|C thresholds on the key
+uniform float u_matSoft;
+uniform bool  u_matRepeat;
+uniform vec4  u_matA;         // type, roughness, amount, tint mix
+uniform vec4  u_matB;
+uniform vec4  u_matC;
+uniform vec3  u_matTintA;
+uniform vec3  u_matTintB;
+uniform vec3  u_matTintC;
+uniform float u_matIor;
+uniform float u_crease;
+uniform vec3  u_creaseCol;
+uniform float u_creaseRad;
+
+// Material types: 0 standard (amount = shine), 1 metal (amount = metalness),
+// 2 glass (amount = transparency), 3 iridescent (amount = film thickness),
+// 4 glow (amount = intensity).
+struct Mat {
+  vec3 albedo;
+  float rough, metal, gloss, glass, iridW, iridT, glow;
+  vec3 glowCol, glassTint;
+};
+
+vec3 matTexLod(vec2 uv, float lod) {
+#ifdef HAS_TEX_LOD
+  return texture2DLodEXT(u_matTex, uv, lod).rgb;
+#else
+  return texture2D(u_matTex, uv).rgb;
+#endif
+}
+float lumOf(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+
+// Texture colour at p. Surface mapping: seamless triplanar in the fractal's
+// own frame (moves with Object Transform). Fractalized: Mandelbulber's orbit
+// point (recorded by mapLocal while g_texProbe is set), planar
+// uv = (−x, y)·scale − offset.
+vec3 texSample(vec3 p, vec3 n, float t) {
+  if (u_texMap == 1) {
+    g_texProbe = true;
+    float tr;
+    map(p, tr);
+    g_texProbe = false;
+    return matTexLod(vec2(-g_texZ.x, g_texZ.y) * u_texScale - u_texOff, u_texBlur);
+  }
+  // Mip level from the pixel footprint: ~t/(lens·minRes) world units per pixel.
+  float fp = t / (u_lens * min(u_resolution.x, u_resolution.y));
+  float lod = log2(max(fp * u_texSize * u_texScale / u_objScale, 1.0)) + u_texBlur;
+  vec3 q = u_objInv * (p - u_objPos) / u_objScale * u_texScale;
+  vec3 w = pow(abs(u_objInv * n), vec3(u_texSharp));
+  w /= max(w.x + w.y + w.z, 1e-5);
+  vec2 asp = vec2(1.0, u_texAspect); // one tile = one image width; keep the image's shape
+  return matTexLod((q.zy - u_texOff) * asp, lod) * w.x + matTexLod((q.xz - u_texOff) * asp, lod) * w.y + matTexLod((q.xy - u_texOff) * asp, lod) * w.z;
+}
+
+// Crease depth 0..1: how much less room there is a little way out from the
+// surface than the local DE slope predicts. Using the slope as the reference
+// cancels the DE's under-estimate (often ~½), which plain AO reads as
+// occlusion. One map() call site (loop).
+float creaseDepth(vec3 p, vec3 n, float r) {
+  float s1 = 1.0, s2 = 0.0;
+  for (int k = 0; k < 3; k++) {
+    float h = r * (k == 0 ? 0.15 : (k == 1 ? 0.5 : 1.0));
+    float tr;
+    float sl = map(p + n * h, tr) / h;
+    if (k == 0) s1 = max(sl, 1e-7); else s2 += 0.5 * sl;
+  }
+  return clamp(1.0 - s2 / s1, 0.0, 1.0);
+}
+
+// Thin-film interference (soap bubble / oil slick): reflectance per RGB
+// wavelength (650/530/440 nm) for a film of index 1.33 and thickness d µm.
+vec3 thinFilm(float cosI, float d) {
+  float cosT = sqrt(max(1.0 - (1.0 - cosI * cosI) / 1.769, 0.0));
+  vec3 ph = 12.566371 * 1.33 * d * cosT / vec3(0.65, 0.53, 0.44);
+  return 0.5 + 0.5 * cos(ph);
+}
+
+// Walk through the solid along dir until the DE says we are outside again.
+// The DE is unsigned, so "inside" reads as ≈0: step until it grows.
+vec3 exitSolid(vec3 p, vec3 dir, float eps, out bool ok) {
+  float t = eps * 6.0;
+  ok = false;
+  for (int i = 0; i < 64; i++) {
+    float tr;
+    float d = map(p + dir * t, tr);
+    if (d > eps * 3.0) { ok = true; break; }
+    t += max(d, eps * 4.0) + 0.001 * float(i);
+  }
+  return p + dir * t;
+}
+
+vec3 bgDir(vec3 d) { return u_envMode > 0 ? envDir(d, u_envBlur) * u_envIntensity : u_bgColor; }
+
+// Everything about the surface at a fractal hit: crease tint, texture colour
+// and bump (n is bumped in place), slot weights and the blended material.
+// Without materials it is slot A = Standard with the textured colour.
+Mat evalSurface(vec3 p, inout vec3 n, float t, float eN, float trap, vec3 base) {
+  float tr0;
+  map(p, tr0); // leaves the fold counts / orbit trap of p in the globals
+  float cav = (u_crease > 0.0 || (u_matOn && u_matAssign == 4)) ? creaseDepth(p, n, u_creaseRad * (0.05 + t * 0.02)) : 0.0;
+  vec3 w = vec3(1.0, 0.0, 0.0);
+  if (u_matOn && u_matAssign > 0) {
+    float key = n.y * 0.5 + 0.5;
+    if (u_matAssign == 1) key = g_boxCol + g_sphCol;
+    else if (u_matAssign == 2) key = sqrt(g_orbit);
+    else if (u_matAssign == 3) key = fract((trap * 0.4 + u_colorShift * 10.0) * u_gradScale);
+    else if (u_matAssign == 4) key = cav;
+    else if (u_matAssign == 5) key = p.y;
+    float s = key * u_matScale + u_matOffset;
+    if (u_matRepeat) s = fract(s);
+    float sB = smoothstep(u_matSplit.x - u_matSoft, u_matSplit.x + u_matSoft + 1e-4, s);
+    float sC = smoothstep(u_matSplit.y - u_matSoft, u_matSplit.y + u_matSoft + 1e-4, s);
+    w = vec3(1.0 - sB, max(sB - sC, 0.0), sC);
+    w /= max(w.x + w.y + w.z, 1e-4);
+  }
+  if (u_crease > 0.0) base = mix(base, u_creaseCol, clamp(smoothstep(0.05, 0.5, cav) * u_crease * 1.5, 0.0, 1.0));
+
+  float tw = u_texSlot == 0 ? 1.0 : (u_texSlot == 1 ? w.x : (u_texSlot == 2 ? w.y : w.z));
+  if (u_texMode > 0 && tw > 0.001) {
+    // Bump: brightness difference across ~1.5 pixels along a tangent frame.
+    float fp = t / (u_lens * min(u_resolution.x, u_resolution.y));
+    float e = max(fp * 1.5, eN);
+    vec3 ta = normalize(cross(n, abs(n.y) < 0.9 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0)));
+    vec3 tb = cross(n, ta);
+    int ns = u_texMode >= 2 ? 3 : 1;
+    vec3 tc = vec3(1.0);
+    float ha = 0.0, hb = 0.0;
+    for (int k = 0; k < 3; k++) {
+      if (k >= ns) break;
+      vec3 c = texSample(p + (k == 1 ? ta * e : (k == 2 ? tb * e : vec3(0.0))), n, t);
+      if (k == 0) tc = c; else if (k == 1) ha = lumOf(c); else hb = lumOf(c);
+    }
+    if (u_texMode != 2) {
+      vec3 bl = base * tc;
+      if (u_texBlend == 1) bl = mix(2.0 * base * tc, 1.0 - 2.0 * (1.0 - base) * (1.0 - tc), step(0.5, base));
+      else if (u_texBlend == 2) bl = tc;
+      else if (u_texBlend == 3) bl = 1.0 - (1.0 - base) * (1.0 - tc);
+      base = mix(base, bl, u_texMix * tw);
+    }
+    if (u_texMode >= 2) {
+      float h0 = lumOf(tc);
+      n = normalize(n - (ta * (ha - h0) + tb * (hb - h0)) * u_texBump * 3.0 * tw);
+    }
+  }
+
+  Mat m;
+  if (!u_matOn) {
+    m.albedo = base; m.rough = 0.5; m.metal = 0.0; m.gloss = 0.0; m.glass = 0.0;
+    m.iridW = 0.0; m.iridT = 0.5; m.glow = 0.0; m.glowCol = base; m.glassTint = vec3(1.0);
+    return m;
+  }
+  vec3 ty = vec3(u_matA.x, u_matB.x, u_matC.x);
+  vec3 amt = vec3(u_matA.z, u_matB.z, u_matC.z);
+  vec3 cA = mix(base, u_matTintA, u_matA.w);
+  vec3 cB = mix(base, u_matTintB, u_matB.w);
+  vec3 cC = mix(base, u_matTintC, u_matC.w);
+  vec3 isS = vec3(equal(ty, vec3(0.0)));
+  vec3 isM = vec3(equal(ty, vec3(1.0)));
+  vec3 isG = vec3(equal(ty, vec3(2.0)));
+  vec3 isI = vec3(equal(ty, vec3(3.0)));
+  vec3 isE = vec3(equal(ty, vec3(4.0)));
+  m.albedo = cA * w.x + cB * w.y + cC * w.z;
+  m.rough = dot(w, vec3(u_matA.y, u_matB.y, u_matC.y));
+  m.gloss = dot(w * isS, amt);
+  m.metal = clamp(dot(w * isM, amt), 0.0, 1.0);
+  m.glass = clamp(dot(w * isG, amt), 0.0, 1.0);
+  m.iridW = dot(w, isI);
+  m.iridT = 0.2 + 1.2 * dot(w * isI, amt) / max(m.iridW, 1e-4);
+  m.glow = dot(w * isE, amt);
+  vec3 wE = w * isE, wG = w * isG;
+  m.glowCol = (cA * wE.x + cB * wE.y + cC * wE.z) / max(wE.x + wE.y + wE.z, 1e-4);
+  m.glassTint = wG.x + wG.y + wG.z > 1e-4 ? (cA * wG.x + cB * wG.y + cC * wG.z) / (wG.x + wG.y + wG.z) : vec3(1.0);
+  return m;
+}
+
+// Surface-mode shading of a material hit. Glass here shows what's straight
+// through the solid along the refracted ray (sky / environment); Path Traced
+// mode follows the refracted ray into the scene.
+vec3 shadeMat(Mat m, vec3 p, vec3 n, vec3 rd, vec3 L, float diff, float sh, float ao, float eN) {
+  float ndv = max(dot(n, -rd), 0.0);
+  float shin = 2.0 / max(m.rough * m.rough, 0.002);
+  vec3 F0 = mix(vec3(0.04), m.albedo, m.metal);
+  F0 = mix(F0, thinFilm(ndv, m.iridT), m.iridW);
+  vec3 fres = F0 + (1.0 - F0) * pow(1.0 - ndv, 5.0);
+  vec3 diffC = m.albedo * (1.0 - m.metal) * (1.0 - m.glass) * (1.0 - 0.75 * m.iridW);
+  vec3 col = diffC * (diff * sh + u_ambient) * ao;
+  float spec = pow(max(dot(reflect(rd, n), L), 0.0), shin) * (shin + 2.0) * 0.125;
+  col += (fres + m.gloss * 0.5 * (1.0 - m.metal)) * spec * sh * u_lightColor;
+  vec3 R = reflect(rd, n);
+  // Without an environment image, reflect a soft studio gradient (background
+  // below, light colour above) so metal, glass and film still have something to show.
+  vec3 env = u_envMode > 0 ? envDir(R, m.rough * 7.0) * u_envIntensity
+                           : mix(u_bgColor + 0.08, u_lightColor * 0.8, smoothstep(-0.4, 0.8, R.y));
+  float reflW = clamp(m.metal + m.glass + m.iridW + m.gloss * 0.6 + (u_envMode > 0 ? u_envReflect : 0.0), 0.0, 1.0);
+  col += env * fres * reflW * ao;
+  // Rough-metal fill: the light's broad reflection, tinted by the metal.
+  col += m.metal * F0 * (diff * sh * (1.0 - 0.5 * m.rough) * 0.7 + u_ambient * 0.5) * ao;
+  if (u_envMode > 0) col += diffC * envDir(n, 6.0) * u_envLight * ao;
+  col += m.glowCol * m.glow * (0.35 + 0.65 * pow(1.0 - ndv, 2.0));
+  if (m.glass > 0.001) {
+    vec3 dir = refract(rd, n, 1.0 / u_matIor);
+    if (dot(dir, dir) < 1e-6) dir = reflect(rd, n);
+    vec2 h = hash22(gl_FragCoord.xy + u_sampleIndex * 1.618);
+    vec2 h2 = hash22(gl_FragCoord.yx + u_sampleIndex * 2.718);
+    dir = normalize(dir + (vec3(h, h2.x) * 2.0 - 1.0) * m.rough * 0.4);
+    bool ok;
+    exitSolid(p - n * eN * 2.0, dir, eN, ok);
+    vec3 behind = bgDir(dir) * (ok ? 1.0 : 0.6); // too thick to cross: dimmed
+    col = mix(col, behind * m.glassTint, m.glass * (1.0 - dot(fres, vec3(0.3333))));
+  }
+  return col;
+}
+#endif
+
 void primaryRay(out vec3 ro, out vec3 rd, out vec2 pix, out vec2 screenUv) {
   pix = gl_FragCoord.xy + u_pixelOffset;
   vec2 fragCoord = pix + u_jitter;
@@ -1021,6 +1284,9 @@ void main() {
     vec3 p = ro + rd * t;
     float eN = 0.0004 * (1.0 + t * 0.1) / u_detail;
     vec3 n = getNormal(p, eN);
+#ifdef HAS_MAT
+    Mat mt = evalSurface(p, n, t, eN, trap, palette(trap * 0.4 + u_colorShift * 10.0)); // bumps n
+#endif
     vec3 toL = u_lightPos - p;
     float lightDist = length(toL);
     vec3 lightDir = toL / lightDist;
@@ -1035,12 +1301,18 @@ void main() {
     if (u_shadows && diff > 0.0) sh = softShadow(p + n * eN * 2.0, lightDir, min(lightDist, 20.0), u_shadowSoft, eN);
 
     vec3 baseCol = palette(trap * 0.4 + u_colorShift * 10.0);
+#ifdef HAS_MAT
+    baseCol = mt.albedo;
+#endif
     col = baseCol * (diff * sh + u_ambient) * ao + spec * sh * 0.4 * u_lightColor;
     if (u_envMode > 0) {
       float fres = 0.04 + 0.96 * pow(1.0 - max(dot(n, -rd), 0.0), 5.0);
       col += baseCol * envDir(n, 6.0) * u_envLight * ao;
       col += envDir(reflect(rd, n), 1.5) * u_envReflect * fres * ao;
     }
+#ifdef HAS_MAT
+    if (u_matOn) col = shadeMat(mt, p, n, rd, lightDir, diff, sh, ao, eN);
+#endif
     vec3 fogCol = (u_envMode > 0 && u_envFog) ? bg : u_bgColor;
     col = mix(col, fogCol, 1.0 - exp(-u_fog * t * 0.1));
   }
@@ -1152,6 +1424,10 @@ void main() {
     // Material: the fractal uses the Path Tracing sliders; the ground its own.
     vec3 n, albedo;
     float metal = u_ptMetal, rough = u_ptRough;
+#ifdef HAS_MAT
+    Mat mt;
+    bool matHit = false;
+#endif
     if (g_onGround) {
       n = groundNormal(p, t);
       albedo = toLin(groundAlbedo(p, t));
@@ -1161,12 +1437,44 @@ void main() {
     } else {
       n = getNormal(p, eN);
       albedo = toLin(palette(trap * 0.4 + u_colorShift * 10.0));
+#ifdef HAS_MAT
+      mt = evalSurface(p, n, t, eN, trap, palette(trap * 0.4 + u_colorShift * 10.0));
+      albedo = toLin(mt.albedo);
+      if (u_matOn) { matHit = true; metal = mt.metal; rough = mt.rough; }
+#endif
       acc += thr * albedo * u_ptEmit * exp(-trap * 4.0);
+#ifdef HAS_MAT
+      if (matHit) acc += thr * toLin(mt.glowCol) * mt.glow * 1.5 * (0.35 + 0.65 * pow(1.0 - max(dot(n, -rd), 0.0), 2.0));
+#endif
     }
     if (dot(n, rd) > 0.0) n = -n;
 
     vec3 F0 = mix(vec3(u_groundType == 5 && g_onGround ? 0.02 : 0.04), albedo, metal);
+#ifdef HAS_MAT
+    if (matHit) F0 = mix(F0, thinFilm(max(dot(n, -rd), 0.0), mt.iridT), mt.iridW);
+#endif
     vec3 fres = F0 + (1.0 - F0) * pow(1.0 - max(dot(n, -rd), 0.0), 5.0);
+#ifdef HAS_MAT
+    if (matHit) {
+      fres += (1.0 - fres) * mt.gloss * 0.15;
+      albedo *= 1.0 - 0.75 * mt.iridW;
+      // Glass: transmission lobe (refract, cross the solid, carry on).
+      float qG = mt.glass * (1.0 - dot(fres, vec3(0.3333)));
+      if (qG > 0.0 && rnd() < qG) {
+        vec3 dir = refract(rd, n, 1.0 / u_matIor);
+        if (dot(dir, dir) < 1e-6) dir = reflect(rd, n);
+        dir = normalize(dir + randomSphere() * rough * 0.5);
+        bool ok;
+        vec3 ex = exitSolid(p - n * eN * 2.0, dir, eN, ok);
+        if (!ok) break;
+        thr *= toLin(mt.glassTint);
+        ro = ex;
+        rd = dir;
+        continue;
+      }
+      if (qG > 0.0) { thr /= 1.0 - qG; albedo *= 1.0 - mt.glass; }
+    }
+#endif
 
     // Next-event estimation: one shadow ray to a random point on the light sphere.
     vec3 lp = u_lightPos + randomSphere() * u_ptLightSize;
@@ -1320,7 +1628,8 @@ vec3 foldStack(vec3 z) {
   // Preprocessor header: #extension first (strict drivers require it before
   // anything else), then the specialisation defines.
   const head = (opts.texLod ? '#extension GL_EXT_shader_texture_lod : enable\n#define HAS_TEX_LOD\n' : '')
-    + `#define RENDER_MODE ${opts.mode | 0}\n#define SURF_VARIANT ${opts.variant | 0}\n`;
+    + `#define RENDER_MODE ${opts.mode | 0}\n#define SURF_VARIANT ${opts.variant | 0}\n`
+    + (opts.mat ? '#define HAS_MAT\n' : '');
   src = head + src;
   return src + FRAG_TAIL;
 }
