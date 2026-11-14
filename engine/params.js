@@ -41,7 +41,6 @@ export const GROUPS = [
   { id: 'view',    side: 'right', title: 'View & Navigation' },
   { id: 'object',  side: 'right', title: 'Object Transform' },
   { id: 'style',   side: 'right', title: 'Color & Lens', accent: true },
-  { id: 'mat',     side: 'right', title: 'Materials & Textures', accent: true },
   { id: 'env',     side: 'right', title: 'Environment', accent: true },
   { id: 'ground',  side: 'right', title: 'Ground Plane', accent: true },
   { id: 'light',   side: 'right', title: 'Atmosphere & Light' },
@@ -51,9 +50,6 @@ export const GROUPS = [
 ];
 
 const PI = 3.1416;
-export const MAT_TYPES = ['Standard', 'Metal', 'Glass', 'Iridescent', 'Glow'];
-export const MAT_ASSIGN = ['Single (Slot A)', 'Fold Count', 'Orbit Trap', 'Colour Index', 'Crease Depth', 'Height', 'Facing Up'];
-export const TEX_SOURCES = ['Loaded Image', 'Marble', 'Cells', 'Rust', 'Brushed Metal', 'Bark', 'Lava Cracks', 'Stone'];
 
 export const SURF_VARIANTS = ['Classic (v2 engine)', 'Amazing Surf (Mandelbulber)', 'Mod 1', 'Mod 2', 'Mod 3', 'Mod 4', 'Multi', 'M3D (Mandelbulb3D)', 'Klein', 'Klein V2', 'Amazing IFS'];
 export const STACK_FOLDS = ['Off', 'Box (Tglad)', 'Inverse Fold  f−||z|−f|', 'Abs Offset  |z+f|', 'Conditional Reflect', 'DarkBeam Double', 'Clamped Folder'];
@@ -184,9 +180,9 @@ export const PARAMS = [
 
   // ── Wave Warp (all formulas) ────────────────────────────────────────────
   { id: 'waveType', label: 'Wave Shape', type: 'select', group: 'wave', options: ['Off', 'Ripple (radial shells)', 'Sine Shear', 'Wave Fold', 'Twist Wave', 'Gyroid Wave', 'Interference'], def: 0, interp: 'step' },
-  { id: 'waveAmp', mutate: true, label: 'Amplitude', type: 'range', group: 'wave', min: -1, max: 1, step: 0.001, def: 0.15, hardMin: -10, hardMax: 10, gate: 'waveType', gateEq: [1, 2, 3, 4, 5, 6], fine: true },
-  { id: 'waveFreq', mutate: true, label: 'Frequency', type: 'range', group: 'wave', min: 0.1, max: 20, step: 0.01, def: 3, hardMin: 0.001, hardMax: 200, gate: 'waveType', gateEq: [1, 2, 3, 4, 5, 6], fine: true },
-  { id: 'wavePhase', mutate: true, label: 'Phase (animate me)', type: 'range', group: 'wave', min: -PI, max: PI, step: 0.001, def: 0, hardMin: -1000, hardMax: 1000, gate: 'waveType', gateEq: [1, 2, 3, 4, 5, 6], fine: true },
+  { id: 'waveAmp', label: 'Amplitude', type: 'range', group: 'wave', min: -1, max: 1, step: 0.001, def: 0.15, hardMin: -10, hardMax: 10, gate: 'waveType', gateEq: [1, 2, 3, 4, 5, 6], fine: true },
+  { id: 'waveFreq', label: 'Frequency', type: 'range', group: 'wave', min: 0.1, max: 20, step: 0.01, def: 3, hardMin: 0.001, hardMax: 200, gate: 'waveType', gateEq: [1, 2, 3, 4, 5, 6], fine: true },
+  { id: 'wavePhase', label: 'Phase (animate me)', type: 'range', group: 'wave', min: -PI, max: PI, step: 0.001, def: 0, hardMin: -1000, hardMax: 1000, gate: 'waveType', gateEq: [1, 2, 3, 4, 5, 6], fine: true },
   { id: 'wavePhaseStep', label: 'Phase Shift per Iteration', type: 'range', group: 'wave', min: -PI, max: PI, step: 0.001, def: 0, hardMin: -100, hardMax: 100, gate: 'waveType', gateEq: [1, 2, 3, 4, 5, 6], fine: true },
   { id: 'waveAxX', label: 'WX', type: 'range', group: 'wave', min: -2, max: 2, step: 0.01, def: 1, row: 'wax', section: 'Axis Weights (Shear / Fold / Gyroid / Interference)', gate: 'waveType', gateEq: [2, 3, 5, 6] },
   { id: 'waveAxY', label: 'WY', type: 'range', group: 'wave', min: -2, max: 2, step: 0.01, def: 1, row: 'wax', gate: 'waveType', gateEq: [2, 3, 5, 6] },
@@ -267,49 +263,6 @@ export const PARAMS = [
   { id: 'vignette', label: 'Vignette', type: 'range', group: 'style', min: 0, max: 2, step: 0.01, def: 0.5 },
   { id: 'dofStrength', label: 'Depth Focus', type: 'range', group: 'style', min: 0, max: 2, step: 0.01, def: 0, hardMin: 0, section: 'Depth of Field (dbl-click to focus)' },
   { id: 'focalDist', label: 'Focal Dist', type: 'range', group: 'style', min: 0.1, max: 20, step: 0.01, def: 5, hardMin: 0.0001 },
-
-  // ── Materials & textures ────────────────────────────────────────────────
-  { id: 'matOn', label: 'Enable Materials', type: 'bool', group: 'mat', def: false },
-  { id: 'matAssign', label: 'Assign Slots By', type: 'select', group: 'mat', options: MAT_ASSIGN, def: 1, gate: 'matOn' },
-  { id: 'matScale', label: 'Key ×', type: 'range', group: 'mat', min: 0, max: 2, step: 0.001, def: 0.25, hardMin: -100, hardMax: 100, gate: 'matOn', row: 'mk', mutate: true },
-  { id: 'matOffset', label: 'Key +', type: 'range', group: 'mat', min: -1, max: 1, step: 0.001, def: 0, gate: 'matOn', row: 'mk', mutate: true },
-  { id: 'matSplit1', label: 'A|B', type: 'range', group: 'mat', min: 0, max: 1, step: 0.01, def: 0.34, gate: 'matOn', row: 'msp' },
-  { id: 'matSplit2', label: 'B|C', type: 'range', group: 'mat', min: 0, max: 1, step: 0.01, def: 0.67, gate: 'matOn', row: 'msp' },
-  { id: 'matSoft', label: 'Band Softness', type: 'range', group: 'mat', min: 0, max: 0.5, step: 0.005, def: 0.03, hardMin: 0, gate: 'matOn' },
-  { id: 'matRepeat', label: 'Repeat Bands', type: 'bool', group: 'mat', def: true, gate: 'matOn' },
-  { id: 'matAType', label: 'Type', type: 'select', group: 'mat', options: MAT_TYPES, def: 0, gate: 'matOn', section: 'Slot A', row: 'mA1' },
-  { id: 'matATint', label: 'Tint', type: 'color', group: 'mat', def: '#ffffff', gate: 'matOn', row: 'mA1' },
-  { id: 'matAMix', label: 'Mix', type: 'range', group: 'mat', min: 0, max: 1, step: 0.01, def: 0, hardMin: 0, hardMax: 1, gate: 'matOn', row: 'mA2' },
-  { id: 'matARough', label: 'Rough', type: 'range', group: 'mat', min: 0, max: 1, step: 0.01, def: 0.45, hardMin: 0, hardMax: 1, gate: 'matOn', row: 'mA2', mutate: true },
-  { id: 'matAAmt', label: 'Amount (by type)', type: 'range', group: 'mat', min: 0, max: 1, step: 0.01, def: 0.3, hardMin: 0, hardMax: 4, gate: 'matOn' },
-  { id: 'matBType', label: 'Type', type: 'select', group: 'mat', options: MAT_TYPES, def: 1, gate: 'matOn', section: 'Slot B', row: 'mB1' },
-  { id: 'matBTint', label: 'Tint', type: 'color', group: 'mat', def: '#e2b86a', gate: 'matOn', row: 'mB1' },
-  { id: 'matBMix', label: 'Mix', type: 'range', group: 'mat', min: 0, max: 1, step: 0.01, def: 0.35, hardMin: 0, hardMax: 1, gate: 'matOn', row: 'mB2' },
-  { id: 'matBRough', label: 'Rough', type: 'range', group: 'mat', min: 0, max: 1, step: 0.01, def: 0.25, hardMin: 0, hardMax: 1, gate: 'matOn', row: 'mB2', mutate: true },
-  { id: 'matBAmt', label: 'Amount (by type)', type: 'range', group: 'mat', min: 0, max: 1, step: 0.01, def: 1, hardMin: 0, hardMax: 4, gate: 'matOn' },
-  { id: 'matCType', label: 'Type', type: 'select', group: 'mat', options: MAT_TYPES, def: 3, gate: 'matOn', section: 'Slot C', row: 'mC1' },
-  { id: 'matCTint', label: 'Tint', type: 'color', group: 'mat', def: '#ffffff', gate: 'matOn', row: 'mC1' },
-  { id: 'matCMix', label: 'Mix', type: 'range', group: 'mat', min: 0, max: 1, step: 0.01, def: 0, hardMin: 0, hardMax: 1, gate: 'matOn', row: 'mC2' },
-  { id: 'matCRough', label: 'Rough', type: 'range', group: 'mat', min: 0, max: 1, step: 0.01, def: 0.15, hardMin: 0, hardMax: 1, gate: 'matOn', row: 'mC2', mutate: true },
-  { id: 'matCAmt', label: 'Amount (by type)', type: 'range', group: 'mat', min: 0, max: 1, step: 0.01, def: 0.5, hardMin: 0, hardMax: 4, gate: 'matOn' },
-  { id: 'matIor', label: 'Glass Index of Refraction', type: 'range', group: 'mat', min: 1, max: 2.5, step: 0.01, def: 1.45, hardMin: 1, hardMax: 4, gate: 'matOn', section: 'Glass' },
-  { id: 'creaseAmt', label: 'Crease Tint', type: 'range', group: 'mat', min: 0, max: 1, step: 0.01, def: 0, hardMin: 0, hardMax: 2, section: 'Crease Colour (works without materials)' },
-  { id: 'creaseCol', label: 'Colour', type: 'color', group: 'mat', def: '#2a1408', row: 'crs' },
-  { id: 'creaseRad', label: 'Radius', type: 'range', group: 'mat', min: 0.1, max: 5, step: 0.01, def: 1, hardMin: 0.01, row: 'crs' },
-  { id: 'texMode', label: 'Texture', type: 'select', group: 'mat', options: ['Off', 'Colour', 'Bump', 'Colour + Bump'], def: 0, section: 'Texture (works without materials)' },
-  { id: 'texSrc', label: 'Image', type: 'select', group: 'mat', options: TEX_SOURCES, def: 1, gate: 'texMode', gateEq: [1, 2, 3] },
-  { id: 'texMap', label: 'Mapping', type: 'select', group: 'mat', options: ['Surface (seamless triplanar)', 'Fractalized orbit (Mandelbulber)'], def: 0, gate: 'texMode', gateEq: [1, 2, 3] },
-  { id: 'texBlend', label: 'Blend', type: 'select', group: 'mat', options: ['Multiply', 'Overlay', 'Replace', 'Screen'], def: 0, gate: 'texMode', gateEq: [1, 2, 3], row: 'tbl' },
-  { id: 'texSlot', label: 'Apply To', type: 'select', group: 'mat', options: ['All', 'Slot A', 'Slot B', 'Slot C'], def: 0, gate: 'texMode', gateEq: [1, 2, 3], row: 'tbl' },
-  { id: 'texScale', label: 'Scale (tiles per unit)', type: 'range', group: 'mat', min: 0.05, max: 10, step: 0.001, def: 1, hardMin: 0.0001, hardMax: 1000, gate: 'texMode', gateEq: [1, 2, 3], mutate: true },
-  { id: 'texOffX', label: 'Off X', type: 'range', group: 'mat', min: -1, max: 1, step: 0.001, def: 0, gate: 'texMode', gateEq: [1, 2, 3], row: 'tof' },
-  { id: 'texOffY', label: 'Off Y', type: 'range', group: 'mat', min: -1, max: 1, step: 0.001, def: 0, gate: 'texMode', gateEq: [1, 2, 3], row: 'tof' },
-  { id: 'texMix', label: 'Colour', type: 'range', group: 'mat', min: 0, max: 1, step: 0.01, def: 1, hardMin: 0, hardMax: 1, gate: 'texMode', gateEq: [1, 2, 3], row: 'tmx' },
-  { id: 'texBump', label: 'Bump', type: 'range', group: 'mat', min: 0, max: 3, step: 0.01, def: 1, hardMin: 0, hardMax: 20, gate: 'texMode', gateEq: [1, 2, 3], row: 'tmx' },
-  { id: 'texSharp', label: 'Seams', type: 'range', group: 'mat', min: 1, max: 16, step: 0.1, def: 4, hardMin: 1, hardMax: 64, gate: 'texMode', gateEq: [1, 2, 3], row: 'tsh' },
-  { id: 'texBlur', label: 'Blur', type: 'range', group: 'mat', min: 0, max: 6, step: 0.01, def: 0, hardMin: 0, hardMax: 12, gate: 'texMode', gateEq: [1, 2, 3], row: 'tsh' },
-  { id: 'texFracStart', label: 'From It', type: 'range', group: 'mat', min: 0, max: 40, step: 1, def: 2, int: true, hardMin: 0, hardMax: 250, gate: 'texMap', gateEq: 1, row: 'tfr' },
-  { id: 'texFracCube', label: 'Cube', type: 'range', group: 'mat', min: 0.1, max: 20, step: 0.01, def: 2, hardMin: 0.0001, hardMax: 1e5, gate: 'texMap', gateEq: 1, row: 'tfr' },
 
   // ── Environment (image source is chosen in the UI; see engine/environment.js) ──
   { id: 'envMode', label: 'Background', type: 'select', group: 'env', options: ['Solid Color', 'Backdrop (fit to view)', 'Panorama (360° sky)'], def: 0 },

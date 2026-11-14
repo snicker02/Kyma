@@ -296,32 +296,8 @@ export function importMandelbulber(text) {
     o.gradRepeat = Math.max(0.1, num(m, 'mat1_coloring_speed', 1));
     o.colorSource = 0;
   }
-  // Colour texture: Mandelbulber multiplies the surface colour by
-  // (tex·intensity + 1 − intensity) → Kyma Multiply blend at that amount.
-  // "Fractalize" maps the orbit point (Kyma's Fractalized mapping, same rule);
-  // plain planar mapping becomes Kyma's seamless surface mapping.
-  o.texMode = 0;
-  if (bool(m, 'mat1_use_color_texture', false)) {
-    const sc = m.mat1_texture_scale !== undefined ? nums(m.mat1_texture_scale) : [1, 1, 1];
-    const ce = m.mat1_texture_center !== undefined ? nums(m.mat1_texture_center) : [0, 0, 0];
-    const frac = bool(m, 'mat1_texture_fractalize', false);
-    o.texMode = 1;
-    o.texSrc = 0;
-    o.texBlend = 0;
-    o.texMix = Math.min(1, num(m, 'mat1_color_texture_intensity', 1));
-    o.texMap = frac ? 1 : 0;
-    o.texScale = 1 / (sc[0] || 1);
-    o.texOffX = ce[0] || 0;
-    o.texOffY = ce[1] || 0;
-    o.texFracStart = num(m, 'mat1_texture_fractalize_start_iteration', 0);
-    o.texFracCube = num(m, 'mat1_texture_fractalize_cube_size', 2);
-    o.texBlur = 0;
-    const file = String(m.mat1_file_color_texture || '').trim().replace(/;$/, '').split(/[\\/]/).pop();
-    notes.push(`Colour texture ${file ? `"${file}" ` : ''}→ Materials & Textures › Texture (${frac ? 'Fractalized orbit' : 'Surface'} mapping, scale and centre from the file). Load that image with "Load Texture Image…" to match the render; until then a procedural Marble stands in.`);
-    if (Math.abs((sc[1] || 1) - (sc[0] || 1)) > 1e-9) notes.push('Texture scale differs between X and Y; Kyma uses the X scale for both.');
-    const mt = num(m, 'mat1_texture_mapping_type', 0);
-    if (!frac && mt !== 0) notes.push('Cylindrical / spherical / cubic texture mapping → seamless surface mapping.');
-  }
+  if (bool(m, 'mat1_use_color_texture', false) || m.mat1_file_color_texture)
+    notes.push('Surface colour came from an image texture in Mandelbulber; using the material gradient instead.');
 
   // Ground: the primitive chosen above, level by construction.
   o.groundType = 0;

@@ -48,7 +48,7 @@ for (const [k, v] of Object.entries(su)) {
   const t = decl[k];
   ok(!!t, `uniform ${k} not declared in shader`);
   if (!t) continue;
-  const expect = typeof v === 'boolean' ? 'bool' : Array.isArray(v) ? { 2: 'vec2', 3: 'vec3', 4: 'vec4', 9: 'mat3' }[v.length] : null;
+  const expect = typeof v === 'boolean' ? 'bool' : Array.isArray(v) ? { 2: 'vec2', 3: 'vec3', 9: 'mat3' }[v.length] : null;
   if (expect) ok(t === expect, `uniform ${k}: shader ${t} vs js ${expect}`);
   else ok(t === 'float' || t === 'int', `uniform ${k}: numeric type ${t}`);
   ok(Array.isArray(v) ? v.every(Number.isFinite) : (typeof v === 'boolean' || Number.isFinite(v)), `uniform ${k} finite`);
@@ -537,46 +537,6 @@ section('wave warp');
   ok(gated([0.3, 0.2, 0.1]).d === makeDE(defs)([0.3, 0.2, 0.1]).d, 'iteration range outside the iteration count has no effect');
 }
 
-section('mutation grid / textures / materials');
-{
-  const { breed } = await import('../ui/mutation.js');
-  const { TEX_GEN, TEX_KEYS } = await import('../engine/textures.js');
-  const { BIOMES } = await import('../engine/presets.js');
-  const parent = { ...defaults(), ...BIOMES.ifs_shells.v };
-  const kids = breed(parent, 8, 0.08);
-  ok(kids.length === 8 && kids.every(k => Object.keys(k).length >= 1), `breed: 8 children, each changes ≥1 gene (${kids.map(k => Object.keys(k).length).join(',')})`);
-  ok(kids.every(k => Object.keys(k).every(id => PARAM_BY_ID.get(id)?.mutate)), 'breed only touches mutable parameters');
-  const usable = kids.filter(k => { const s = viewScore({ ...parent, ...k }, 4); return s.clearance > 0.02 && s.hitFrac > 0.01; }).length;
-  ok(usable >= 6, `breed: ${usable}/8 children keep a usable view`);
-  ok(new Set(kids.map(k => JSON.stringify(k))).size === 8, 'breed: children are all different');
-  const locked = breed(parent, 12, 0.1, { lockColour: true });
-  ok(locked.every(k => !('colorShift' in k)), 'Lock colour keeps colorShift out of the mutations');
-  const wv = breed({ ...parent, waveType: 2 }, 30, 0.1).some(k => /^wave/.test(Object.keys(k).join(' ')));
-  ok(wv, 'wave parameters join the mutation pool when Wave Warp is on');
-  ok(!breed(parent, 30, 0.1).some(k => Object.keys(k).some(id => /^wave/.test(id))), 'inactive wave parameters are never mutated');
-
-  // Procedural textures must tile: value at x = 1 equals x = 0 (and y).
-  for (const key of TEX_KEYS.slice(1)) {
-    const f = TEX_GEN[key]();
-    let worst = 0, range = 0;
-    for (let i = 0; i < 64; i++) {
-      const u = i / 64;
-      const a = f(0, u), b = f(1, u), c = f(u, 0), d = f(u, 1);
-      for (let k = 0; k < 3; k++) worst = Math.max(worst, Math.abs(a[k] - b[k]), Math.abs(c[k] - d[k]));
-      const g = f(u, (u * 7.3) % 1); range = Math.max(range, Math.abs(g[0] - a[0]) + Math.abs(g[1] - a[1]));
-    }
-    ok(worst < 1e-9 && range > 0.02, `texture ${key}: tiles seamlessly (edge mismatch ${worst.toExponential(1)}) and is not flat`);
-  }
-
-  // Shader: material / texture / crease code is opt-in — the classic path is untouched.
-  const frag = fractalFrag(0, -1, { mode: 0 });
-  ok(/if \(u_matOn\) \{\s*col = shadeMat/.test(frag) && /\} else \{\s*col = baseCol \* \(diff \* sh \+ u_ambient\) \* ao \+ spec \* sh \* 0\.4 \* u_lightColor;/.test(frag), 'surface mode keeps the classic shading when materials are off');
-  const su0 = sceneUniforms(defaults());
-  ok(su0.u_matOn === false && su0.u_texMode === 0 && su0.u_crease === 0, 'materials, texture and crease are off by default');
-  const pt = fractalFrag(0, -1, { mode: 1 });
-  ok(pt.includes('thinFilm(max(dot(n, -rd), 0.0), mt.iridT)') && pt.includes('exitSolid(p - n * eN * 2.0, dir, eN, ok)'), 'path tracer has the film and glass lobes');
-}
-
 section('mandelbulber import');
 {
   const { readFileSync } = await import('node:fs');
@@ -617,14 +577,6 @@ section('mandelbulber import');
   const hy = importMandelbulber(readFileSync(new URL('rusticalia-hybrid.fract', dir), 'utf8'));
   ok(!hy.ok && /Hybrid/.test(hy.error), 'hybrid files are rejected with a reason');
   ok(!importMandelbulber('hello').ok, 'non-Mandelbulber text is rejected');
-  // Colour texture → Kyma texture: fractalized mapping, scale = 1/sx, centre, cube, start, Multiply.
-  const cu = importMandelbulber(readFileSync(new URL('cuentos.fract', dir), 'utf8')).params;
-  ok(cu.texMode === 1 && cu.texMap === 1 && cu.texBlend === 0 && cu.texScale === 1 && cu.texOffX === 0.88 && cu.texOffY === -0.1 && cu.texFracStart === 24 && cu.texFracCube === 8,
-    'Cuentos: fractalized colour texture (centre 0.88/−0.1, start 24, cube 8) imported');
-  const am = importMandelbulber(readFileSync(new URL('amrand.fract', dir), 'utf8')).params;
-  ok(am.texScale === 0.5 && am.texFracStart === 12, 'Amrand: texture scale 2 → 0.5 tiles per unit');
-  const plain = importMandelbulber(readFileSync(new URL('voyager.fract', dir), 'utf8').replace(/mat1_use_color_texture true;/, '')).params;
-  ok(plain.texMode === 0, 'no colour texture in the file → texture off');
 }
 
 section('evolve / rebirth');
