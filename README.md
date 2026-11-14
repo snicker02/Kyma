@@ -1,4 +1,4 @@
-# Kyma v2.15.0
+# Kyma v2.16.0
 
 **Kyma** (κῦμα, Greek for "wave") is a progressive WebGL1 raymarcher for Kali's **Amazing Surf** fractal family. It includes all nine of Mandelbulber's surf formulas, path tracing, volumetric glow and environment lighting. It has no dependencies and no build step. It was formerly *Amazing Surf*; old project files, discovery strings (`SURF2:`) and saved panel layouts still load.
 
@@ -202,6 +202,117 @@ variant.
 - Presets: the **Kyma Waves** group (Gyroid Tide, Rippled Chalice, Liquid
   Shear, Rippled Reliquary, Wave-Striped Shells).
 
+## Mutation grid
+
+**▦ Mutation Grid** (footer, under Evolve) fills the viewer with the current
+scene as the **parent** (outlined: centre of a 3 × 3, top-left of a 4 × 4)
+and its mutated children, each rendering live in its own tile, like
+JWildfire's mutation window.
+
+- **Click a child** to make it the parent; a new set of children appears.
+  Keep clicking to breed toward something you like.
+- **Click the parent** (or **⟳ Re-roll**) for a fresh set of children.
+- **↶ Back** returns to the previous parent. Every pick is also on the main
+  Undo stack.
+- **Strength** sets how far each child strays (Evolve's mutation size).
+- **Lock colour** keeps the gradient offset fixed so only the shape changes.
+- **✓ Done** or **Esc** closes the grid and keeps the current parent.
+
+Children come from Evolve: 3–5 random changes to parameters that are active
+in the current scene. Wave Warp, material key and texture scale join the pool
+when they're switched on. Each child is checked on the CPU first, and one
+that puts the camera inside the surface or shows no surface is re-drawn (up
+to 6 tries). Hover over a tile to see which parameters changed. The main
+viewer pauses while the grid is open. Path-traced scenes preview in surface
+mode in the tiles.
+
+## Materials & textures
+
+Everything in this panel is off by default. When off, the shading is exactly
+the classic one.
+
+### Material slots
+
+**Enable Materials** gives the surface up to three material slots (A, B, C).
+**Assign Slots By** picks what decides which slot a point gets:
+
+| Key | Slot changes with |
+|---|---|
+| Single | slot A everywhere |
+| Fold Count | the number of box/sphere folds (Amazing Surf's stripes) |
+| Orbit Trap | how close the orbit came to the origin |
+| Colour Index | position in the gradient, so slots follow the colour bands |
+| Crease Depth | crevices vs. ridges |
+| Height | world Y |
+| Facing Up | surface direction (try "snow" on upward faces) |
+
+The key is multiplied by **Key ×**, shifted by **Key +**, wrapped
+into 0–1 if **Repeat Bands** is on, then split at **A | B** and **B | C**
+with **Band Softness**.
+
+Each slot has a **Type**, a **Tint** (and **Mix**: 0 = keep the gradient
+colour, 1 = tint only), **Rough** and an **Amount (by type)** whose meaning depends on
+the type:
+
+| Type | Amount |
+|---|---|
+| Standard | shine (extra gloss) |
+| Metal | metalness: coloured reflections, no diffuse |
+| Glass | transparency: refracts (Glass Index of Refraction), crosses the solid and shows what's behind |
+| Iridescent | film thickness: thin-film interference (soap bubble / oil slick) colours that shift with viewing angle |
+| Glow | intensity: light from inside the surface, strongest at grazing angles |
+
+Metal, glass and iridescent show best with an **Environment** image (they
+reflect it). Without one, they reflect a soft studio gradient made from the
+background and light colours. Glass on a thick solid can't be crossed in a
+reasonable number of steps, so it shows the dimmed background straight
+through. It looks most like glass on thin shells and ribbons. All types also
+work in Path Traced mode, with real refraction and film reflections.
+Volumetric mode ignores materials.
+
+### Crease colour
+
+**Crease Tint** colours crevices, with or without materials. It measures how
+much the free space a little way off the surface falls short of what the
+local DE slope predicts. This cancels the DE's under-estimate, which plain AO
+reads as occlusion everywhere. **Radius** sets the crease size. It grows with
+distance, so creases read the same near and far.
+
+### Texture
+
+**Texture** = Colour, Bump, or Colour + Bump, with or without materials.
+
+- **Image**: seven tileable procedural textures (Marble, Cells, Rust, Brushed
+  Metal, Bark, Lava Cracks, Stone; no files needed) or **Loaded Image**. Load
+  any image with **Load Texture Image…**. It's kept for the session but not
+  saved in projects or discovery strings.
+- **Mapping**:
+  - **Surface (seamless triplanar)**: the image is projected along X, Y and
+    Z and blended by the surface direction (**Seams**). There is no UV
+    seam anywhere, and it's attached to the fractal's own frame, so it moves
+    with Object Transform.
+  - **Fractalized orbit (Mandelbulber)**: Mandelbulber's "texture
+    fractalize". From iteration **From It** on, the first orbit point
+    within a cube of half-size **Cube** around the start point becomes
+    the texture coordinate (planar: u = −x·scale − offset X,
+    v = y·scale − offset Y). The texture repeats with the fractal's
+    self-similarity. This is what Jorge's scenes use.
+- **Blend**: Multiply (Mandelbulber's rule), Overlay, Replace, Screen;
+  **Colour** sets how much.
+- **Apply To**: all slots or a single slot.
+- **Bump**: perturbs the normal from the texture's brightness, measured over
+  about 1.5 pixels, so it reads the same at any zoom.
+- **Blur**: picks a coarser mip level.
+
+### Importing Mandelbulber textures
+
+A colour texture in a .fract file (material 1) now comes across:
+fractalized or surface mapping, scale (1/scale X), centre, cube size, start
+iteration and intensity (Multiply). The image itself lives on the author's
+disk, so the import note names the file. Load it with **Load Texture Image…**
+to match the render. Until then Marble stands in. The four built-in batjorge
+presets stay texture-free.
+
 ## Mandelbulber import & batjorge scenes
 
 **Import Mandelbulber Settings…** (Presets panel) loads a Mandelbulber 2 settings file (`.fract`, or the `.txt` that pastebin exports) whose formula is a single **Amazing IFS** (id 239) or **Amazing Surf Mod 1** (id 77).
@@ -329,8 +440,10 @@ engine/
   gradients.js      gradient library, OKLab blending, modifiers → 256-texel LUT
   mbimport.js       Mandelbulber .fract importer (Amazing IFS, Amazing Surf Mod 1)
   environment.js    procedural sky presets, image → power-of-two env texture
+  textures.js       tileable procedural material textures, image → power-of-two texture
   vec.js            vector/matrix helpers
 ui/panel.js         builds both docks from the schema
+ui/mutation.js      mutation grid: breeding, per-tile live rendering
 tests/run.mjs       node logic tests      (npm test)
 tests/browser.mjs   headless-GPU checks   (dev only, needs Playwright)
 ```

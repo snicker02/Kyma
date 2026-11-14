@@ -139,11 +139,11 @@ export const VARIANT_DESC = [
 ];
 
 // Small mutation of 3–5 geometric params (~6% of each slider span).
-export function evolve(values, strength = 0.06) {
+export function evolve(values, strength = 0.06, { exclude = [] } = {}) {
   // Only parameters that currently do something, and always at least one real
   // change (picking hidden params or rounding back to the same value used to make
   // about 7% of clicks do nothing).
-  const pool = PARAMS.filter(p => p.mutate && isActive(p, values));
+  const pool = PARAMS.filter(p => p.mutate && isActive(p, values) && !exclude.includes(p.id));
   const out = {};
   const count = 3 + ri(3);
   for (let tries = 0; Object.keys(out).length < count && tries < 40; tries++) {
