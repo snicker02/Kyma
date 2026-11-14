@@ -72,6 +72,111 @@ export function makeWave(v) {
   };
 }
 
+// ── Kyma's own surf variants 11–15 (mirrors the SURF_VARIANT >= 11 block in
+// glsl.js). One step = X/Y box fold, the variant's fold and scale; returns the
+// new z and fac, the stretch bound used as dr = dr·fac + 1. C-Mult, rotation
+// and +c are applied by the caller, as in the shader.
+const toAxisV = (z, a) => a === 0 ? [z[1], z[2], z[0]] : a === 1 ? [z[2], z[0], z[1]] : [z[0], z[1], z[2]];
+const fromAxisV = (w, a) => a === 0 ? [w[2], w[0], w[1]] : a === 1 ? [w[1], w[2], w[0]] : [w[0], w[1], w[2]];
+const twistAxisV = (z, a, th) => {
+  const w = toAxisV(z, a), c = Math.cos(th), s = Math.sin(th);
+  return fromAxisV([c * w[0] - s * w[1], s * w[0] + c * w[1], w[2]], a);
+};
+// Largest singular value of k·I + u⊗g (closed form for a rank-1 update).
+export function sigRank1(k, u, g) {
+  if (abs(k) < 1e-9) return abs(k) + Math.hypot(u[0], u[1], u[2]) * Math.hypot(g[0], g[1], g[2]);
+  const v = [g[0] / k, g[1] / k, g[2] / k];
+  const a = u[0] * v[0] + u[1] * v[1] + u[2] * v[2], b2 = dot3(u) * dot3(v);
+  const T = 2 + 2 * a + b2, D = (1 + a) ** 2;
+  return abs(k) * Math.sqrt(0.5 * (T + Math.sqrt(Math.max(T * T - 4 * D, 0))));
+}
+
+// Largest eigenvalue of a symmetric 3×3 (trigonometric closed form).
+function symMaxEig(a00, a11, a22, a01, a02, a12) {
+  const p1 = a01 * a01 + a02 * a02 + a12 * a12, q = (a00 + a11 + a22) / 3;
+  const p2 = (a00 - q) ** 2 + (a11 - q) ** 2 + (a22 - q) ** 2 + 2 * p1;
+  const p = Math.sqrt(Math.max(p2 / 6, 0));
+  if (p <= 1e-12) return q;
+  const b00 = (a00 - q) / p, b11 = (a11 - q) / p, b22 = (a22 - q) / p, b01 = a01 / p, b02 = a02 / p, b12 = a12 / p;
+  const det = b00 * (b11 * b22 - b12 * b12) - b01 * (b01 * b22 - b12 * b02) + b02 * (b01 * b12 - b11 * b02);
+  return q + 2 * p * Math.cos(Math.acos(Math.min(Math.max(det / 2, -1), 1)) / 3);
+}
+
+// Gyroid fold (mirrors gyroFold in glsl.js): { z, d, gfac }.
+export function gyroFoldMap(z, f, L) {
+  const q = [z[0] * f, z[1] * f, z[2] * f];
+  const sn = q.map(Math.sin), cs = q.map(Math.cos);
+  const g = sn[0] * cs[1] + sn[1] * cs[2] + sn[2] * cs[0];
+  const gr = [(cs[0] * cs[1] - sn[2] * sn[0]) * f, (cs[1] * cs[2] - sn[0] * sn[1]) * f, (cs[2] * cs[0] - sn[1] * sn[2]) * f];
+  const gn = Math.hypot(gr[0], gr[1], gr[2]), gl = Math.max(gn, 0.5 * f);
+  const d = g / gl;
+  if (Math.abs(d) <= L) return { z: [...z], d, gfac: 1 };
+  const e = d - Math.sign(d) * L;
+  const f2 = f * f;
+  const H = [ // H[r][c]
+    [(-sn[0] * cs[1] - sn[2] * cs[0]) * f2, -cs[0] * sn[1] * f2, -cs[2] * sn[0] * f2],
+    [-cs[0] * sn[1] * f2, (-sn[0] * cs[1] - sn[1] * cs[2]) * f2, -cs[1] * sn[2] * f2],
+    [-cs[2] * sn[0] * f2, -cs[1] * sn[2] * f2, (-sn[1] * cs[2] - sn[2] * cs[0]) * f2],
+  ];
+  const Hv = x => H.map(r => r[0] * x[0] + r[1] * x[1] + r[2] * x[2]);
+  const ggl = gn > 0.5 * f ? Hv(gr).map(t => t / gn) : [0, 0, 0];
+  const gd = [0, 1, 2].map(i => gr[i] / gl - g * ggl[i] / (gl * gl));
+  const nh = gr.map(t => t / gl);
+  const J = [0, 1, 2].map(r => [0, 1, 2].map(c => (r === c ? 1 : 0) - 2 * nh[r] * gd[c] - 2 * e * (H[r][c] / gl - gr[r] * ggl[c] / (gl * gl))));
+  const col = c => [J[0][c], J[1][c], J[2][c]];
+  const c0 = col(0), c1 = col(1), c2 = col(2), dd = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const lam = symMaxEig(dd(c0, c0), dd(c1, c1), dd(c2, c2), dd(c0, c1), dd(c0, c2), dd(c1, c2));
+  return { z: [z[0] - 2 * e * nh[0], z[1] - 2 * e * nh[1], z[2] - 2 * e * nh[2]], d, gfac: Math.sqrt(Math.max(lam, 0)) * 1.001 };
+}
+
+export function makeSurfStep(v) {
+  const variant = v.surfVariant | 0, axis = v.vAxis ?? 2;
+  const minR2 = v.minR * v.minR, infl = v.influence ?? 1;
+  const fx = v.foldX, fy = v.foldY;
+  const lox = v.vLox ?? 0, R0 = v.vTorusR ?? 0.6;
+  const ell = [v.vEllX ?? 1, v.vEllY ?? 1, v.vEllZ ?? 1];
+  const vb = v.vVortex ?? 0, vd = v.vVortexDepth ?? 0;
+  const gf = v.vGyroFreq ?? 2, gL = v.vGyroL ?? 0.4;
+  const surfM = (rr, sc) => sc / (rr < minR2 ? minR2 : Math.min(rr, 1));
+  const scl = (z, k) => [z[0] * k, z[1] * k, z[2] * k];
+  return (z0, actualScale) => {
+    let z = [boxF(z0[0], fx), boxF(z0[1], fy), z0[2]];
+    let fac = 1;
+    if (variant === 15) { const r = gyroFoldMap(z, gf, gL); z = r.z; fac = r.gfac; }
+    let rr, grr, w, rho, qv;
+    if (variant === 12) {
+      w = toAxisV(z, axis); rho = Math.hypot(w[0], w[1]);
+      qv = [rho - R0, w[2], 0]; rr = dot3(qv); grr = scl(qv, 2);
+    } else if (variant === 13) {
+      rr = (z[0] / ell[0]) ** 2 + (z[1] / ell[1]) ** 2 + (z[2] / ell[2]) ** 2;
+      grr = [2 * z[0] / ell[0] ** 2, 2 * z[1] / ell[1] ** 2, 2 * z[2] / ell[2] ** 2];
+    } else { rr = dot3(z); grr = scl(z, 2); }
+    const m = surfM(rr, actualScale), k = (m - 1) * infl + 1;
+    const gk = rr > minR2 && rr < 1 ? scl(grr, -infl * m / rr) : [0, 0, 0];
+    if (variant === 11) {
+      const th = lox * Math.log(1 / Math.min(Math.max(rr, Math.max(minR2, 1e-12)), 1));
+      z = twistAxisV(z, axis, th);
+      fac = sigRank1(k, z, gk) * (rr > minR2 && rr < 1 ? 1 + 2 * abs(lox) : 1);
+      z = scl(z, k);
+    } else if (variant === 12) {
+      const rho2 = R0 + k * (rho - R0);
+      w = rho > 1e-9 ? [w[0] * rho2 / rho, w[1] * rho2 / rho, w[2] * k] : [rho2, 0, w[2] * k];
+      z = fromAxisV(w, axis);
+      fac = Math.max(sigRank1(k, qv, gk), abs(rho2) / Math.max(rho, 1e-9));
+    } else if (variant === 14) {
+      const sk = sigRank1(k, z, gk);
+      z = scl(z, k);
+      const wv = toAxisV(z, axis), rv = Math.hypot(wv[0], wv[1]);
+      z = twistAxisV(z, axis, vb * Math.log(rv + 1e-4) + vd * wv[2]);
+      fac = sk * (1 + abs(vb) + abs(vd) * rv);
+    } else {
+      fac *= sigRank1(k, z, gk);
+      z = scl(z, k);
+    }
+    return { z, fac, rr };
+  };
+}
+
 export function makeDE(v, scaleOverride) {
   const R = fractalRotation(v.alpha, v.beta, v.gamma);
   const P = fractalRotation(v.preAlpha, v.preBeta, v.preGamma);
@@ -194,6 +299,7 @@ export function makeDE(v, scaleOverride) {
   const foldStack = z => { for (const t of stack) if (t) z = stackFold(z, t); return z; };
 
   const wave = waveParams(v), applyWave = makeWave(v);
+  const surfStep = variant >= 11 ? makeSurfStep(v) : null;
 
   const map = function map(p) {
     let z = [p[0], p[1], p[2]];
@@ -358,6 +464,14 @@ export function makeDE(v, scaleOverride) {
         const de0 = Math.hypot(z[0], z[1], z[2]) / abs(dr);
         minDE = i >= (v.vMinDEStart | 0) && i < (v.vMinDEStop ?? 250) ? Math.min(minDE, de0) : de0;
         if (v.vAddC) z = add(z, off);
+      } else if (variant >= 11) {
+        actualScale = scale + v.scaleVary * (abs(actualScale) - 1);
+        const st = surfStep(z, actualScale);
+        z = st.z;
+        dr = dr * st.fac + 1;
+        if (abs(v.cMult) > 0.001) z = add(z, [off[1], off[0], off[2]], v.cMult);
+        if (rotOn) z = mv(R, z);
+        z = add(z, off);
       } else {
         if (variant === 9 && v.vPolyOn) {
           z[0] = abs(z[0]);

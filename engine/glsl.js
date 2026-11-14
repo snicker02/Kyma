@@ -374,6 +374,90 @@ void applyWave(inout vec3 z, inout float dr, int i) {
 // scale factor (e.g. |m| when Influence ≠ 1) the true applied factor is used.
 // The app-level transforms — inversion, axis swap, pre-rotation, spin — wrap
 // every variant.
+#if SURF_VARIANT >= 11
+// ═══ Kyma's own surf variants (11–15) ═══════════════════════════════════════
+// All keep the Amazing Surf skeleton (scale vary → X/Y box fold → sphere fold
+// → C-Mult → rotation → +c) and change the sphere fold or what follows it.
+// Each step reports fac, a bound on how far it can stretch space, and the
+// derivative is tracked as dr = dr·fac + 1 (the +1 is the added c).
+uniform int   u_vAxis;     // 0 X, 1 Y, 2 Z: axis of the ring / twist
+uniform float u_vLox;      // Loxodromic: spiral twist per unit of ln(1/r²)
+uniform float u_vTorusR;   // Torus: ring radius
+uniform vec3  u_vEll;      // Ellipsoid: semi-axis stretch
+uniform vec2  u_vVortex;   // Vortex: twist per ln(radius), twist per height
+uniform vec2  u_vGyro;     // Gyroid: frequency, fold limit
+
+// Coordinates with the chosen axis last (w.xy = plane, w.z = along the axis).
+vec3 toAxis(vec3 z) { return u_vAxis == 0 ? z.yzx : (u_vAxis == 1 ? z.zxy : z); }
+vec3 fromAxis(vec3 w) { return u_vAxis == 0 ? w.zxy : (u_vAxis == 1 ? w.yzx : w); }
+vec3 twistAxis(vec3 z, float th) {
+  vec3 w = toAxis(z);
+  float c = cos(th), s = sin(th);
+  w.xy = vec2(c * w.x - s * w.y, s * w.x + c * w.y);
+  return fromAxis(w);
+}
+// Sphere-fold factor for radius² rr (Amazing Surf's combined fold and scale).
+float surfM(float rr, float minR2, float sc) { return sc / (rr < minR2 ? minR2 : min(rr, 1.0)); }
+
+// Largest singular value of k·I + u⊗g (g = ∇k): closed form for a rank-1 update.
+float sigRank1(float k, vec3 u, vec3 g) {
+  if (abs(k) < 1e-9) return abs(k) + length(u) * length(g);
+  vec3 v = g / k;
+  float a = dot(u, v), b2 = dot(u, u) * dot(v, v);
+  float T = 2.0 + 2.0 * a + b2, D = (1.0 + a) * (1.0 + a);
+  return abs(k) * sqrt(0.5 * (T + sqrt(max(T * T - 4.0 * D, 0.0))));
+}
+
+#if SURF_VARIANT == 15
+// Gyroid fold: reflect space across the gyroid sheets d = ±L, where
+// d = g/|∇g| (|∇g| floored at f/2) approximates the distance to g = 0 — the
+// way a box fold reflects across x = ±f. Returns the folded z; gfac is the
+// exact largest stretch (analytic Jacobian, largest eigenvalue of JᵀJ).
+vec3 gyroFold(vec3 z, out float gfac) {
+  float f = u_vGyro.x, L = u_vGyro.y;
+  vec3 q = z * f;
+  vec3 sn = sin(q), cs = cos(q);
+  float g = sn.x * cs.y + sn.y * cs.z + sn.z * cs.x;
+  vec3 gr = vec3(cs.x * cs.y - sn.z * sn.x, cs.y * cs.z - sn.x * sn.y, cs.z * cs.x - sn.y * sn.z) * f;
+  float gn = length(gr);
+  float gl = max(gn, 0.5 * f);
+  float d = g / gl;
+  gfac = 1.0;
+  if (abs(d) <= L) return z;
+  float sgn = d > 0.0 ? 1.0 : -1.0;
+  float e = d - sgn * L;               // z' = z − 2e·n̂, n̂ = ∇g/gl
+  // Hessian of g (columns), f²·∂²G.
+  float hxx = -sn.x * cs.y - sn.z * cs.x, hyy = -sn.x * cs.y - sn.y * cs.z, hzz = -sn.y * cs.z - sn.z * cs.x;
+  float hxy = -cs.x * sn.y, hyz = -cs.y * sn.z, hxz = -cs.z * sn.x;
+  mat3 H = mat3(hxx, hxy, hxz, hxy, hyy, hyz, hxz, hyz, hzz) * (f * f);
+  vec3 ggl = gn > 0.5 * f ? H * gr / gn : vec3(0.0);   // ∇gl
+  vec3 gd = gr / gl - g * ggl / (gl * gl);             // ∇d
+  vec3 nh = gr / gl;
+  // J = I − 2 n̂⊗∇d − 2e·(H/gl − ∇g⊗∇gl/gl²); columns j = ∂/∂z_j.
+  mat3 J = mat3(1.0) - 2.0 * mat3(nh * gd.x, nh * gd.y, nh * gd.z)
+         - 2.0 * e * (H / gl - mat3(gr * ggl.x, gr * ggl.y, gr * ggl.z) / (gl * gl));
+  // Largest eigenvalue of the symmetric JᵀJ (trigonometric closed form).
+  vec3 c0 = J[0], c1 = J[1], c2 = J[2];
+  float a00 = dot(c0, c0), a11 = dot(c1, c1), a22 = dot(c2, c2);
+  float a01 = dot(c0, c1), a02 = dot(c0, c2), a12 = dot(c1, c2);
+  float p1 = a01 * a01 + a02 * a02 + a12 * a12;
+  float tq = (a00 + a11 + a22) / 3.0;
+  float p2 = (a00 - tq) * (a00 - tq) + (a11 - tq) * (a11 - tq) + (a22 - tq) * (a22 - tq) + 2.0 * p1;
+  float pp = sqrt(max(p2 / 6.0, 0.0));
+  float lam = tq;
+  if (pp > 1e-12) {
+    float b00 = (a00 - tq) / pp, b11 = (a11 - tq) / pp, b22 = (a22 - tq) / pp;
+    float b01 = a01 / pp, b02 = a02 / pp, b12 = a12 / pp;
+    float det = b00 * (b11 * b22 - b12 * b12) - b01 * (b01 * b22 - b12 * b02) + b02 * (b01 * b12 - b11 * b02);
+    float phi = acos(clamp(det * 0.5, -1.0, 1.0)) / 3.0;
+    lam = tq + 2.0 * pp * cos(phi);
+  }
+  gfac = sqrt(max(lam, 0.0)) * 1.001;
+  return z - 2.0 * e * nh;
+}
+#endif
+#endif
+
 float mapLocal(vec3 p, out float trap) {
 #ifdef HAS_MAT
   g_texDone = false;
@@ -614,6 +698,69 @@ float mapLocal(vec3 p, out float trap) {
     minDE = (i >= u_vMinDEStart && i < u_vMinDEStop) ? min(minDE, de0) : de0;
     if (u_vAddC) z += offset;
 
+#elif SURF_VARIANT >= 11
+    actualScale = u_scale + u_scaleVary * (abs(actualScale) - 1.0);
+    z.xy = boxXY(z.xy, u_fold.xy);
+    float fac = 1.0;
+  #if SURF_VARIANT == 15
+    // Gyroid Surf: gyroid-sheet fold after the box fold, then the sphere fold.
+    z = gyroFold(z, fac);
+  #endif
+  #if SURF_VARIANT == 12
+    // Torus Surf: the fold measures and scales the offset from a ring instead
+    // of a point. Cylindrical (ρ, y) about the axis: ρ' = R + k(ρ − R), y' = k·y.
+    vec3 w = toAxis(z);
+    float rho = length(w.xy);
+    vec3 qv = vec3(rho - u_vTorusR, w.z, 0.0);
+    float rr = dot(qv, qv);
+    vec3 grr = 2.0 * qv;
+  #elif SURF_VARIANT == 13
+    // Ellipsoid Surf: fold boundaries are ellipsoids (radius measured in a stretched space).
+    vec3 ue = z / u_vEll;
+    float rr = dot(ue, ue);
+    vec3 grr = 2.0 * z / (u_vEll * u_vEll);
+  #else
+    float rr = dot(z, z);
+    vec3 grr = 2.0 * z;
+  #endif
+    g_sphCol += g_colOn * (rr < minR2 ? 1.0 : (rr < 1.0 ? 0.5 : 0.0));
+    g_sphAmt += g_colOn * max(rr - minR2, 0.0) * 0.01;
+    float m = surfM(rr, minR2, actualScale);
+    float k = (m - 1.0) * u_influence + 1.0;
+    // ∇k (zero where the fold factor is constant); the fold's exact stretch is
+    // the largest singular value of k·I + x⊗∇k.
+    vec3 gk = (rr > minR2 && rr < 1.0) ? -u_influence * m * grr / rr : vec3(0.0);
+  #if SURF_VARIANT == 11
+    // Loxodromic Surf: inside the fold, turn about the axis by an angle that
+    // grows with ln(1/r²): the inversion becomes a loxodromic (spiral) Möbius map.
+    float th = u_vLox * log(1.0 / clamp(rr, max(minR2, 1e-12), 1.0));
+    z = twistAxis(z, th);
+    fac = sigRank1(k, z, gk) * (rr > minR2 && rr < 1.0 ? 1.0 + 2.0 * abs(u_vLox) : 1.0);
+    z *= k;
+  #elif SURF_VARIANT == 12
+    float rho2 = u_vTorusR + k * (rho - u_vTorusR);
+    w.xy = rho > 1e-9 ? w.xy * (rho2 / rho) : vec2(rho2, 0.0);
+    w.z *= k;
+    z = fromAxis(w);
+    // Meridian (ρ, y) and ring-tangent directions are independent.
+    fac = max(sigRank1(k, qv, gk), abs(rho2) / max(rho, 1e-9));
+  #elif SURF_VARIANT == 14
+    // Vortex Surf: after the fold, twist about the axis by β·ln ρ + δ·height,
+    // so every scale winds into the same logarithmic spiral.
+    float sk = sigRank1(k, z, gk);
+    z *= k;
+    vec3 wv = toAxis(z);
+    float rv = length(wv.xy);
+    z = twistAxis(z, u_vVortex.x * log(rv + 1e-4) + u_vVortex.y * wv.z);
+    fac = sk * (1.0 + abs(u_vVortex.x) + abs(u_vVortex.y) * rv);
+  #else
+    fac *= sigRank1(k, z, gk);
+    z *= k;
+  #endif
+    dr = dr * fac + 1.0;
+    if (abs(u_cMult) > 0.001) z += offset.yxz * u_cMult;
+    if (rotOn) z = u_rotMatrix * z;
+    z += offset;
 #else
     // Klein / Klein V2: surf iterations, then a full box-fold × scale tail.
   #if SURF_VARIANT == 9

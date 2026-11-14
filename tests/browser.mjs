@@ -59,7 +59,7 @@ void main() { float tr; float d = map(u_p, tr); gl_FragColor = pack(clamp(d / 16
     ['postInv', { invEnabled: true, invMode: 1, invStrength: 0.7, invRadius: 0.8, alpha: 0.4, beta: -0.3 }],
     ...Array.from({ length: 11 }, (_, t) => [`fold ${t}`, { foldType: t, foldZ: 0.6, polarN: 5, tgladWeight: 0.3 }]),
     ['hybrid 0+6/2', { foldType: 0, foldType2: 7, hybridPeriod: 2 }], ['hybrid 4+7/1', { foldType: 4, foldType2: 8, hybridPeriod: 1, polarN: 7 }],
-    ['pre+spin+start', { preAlpha: 0.5, preBeta: -0.3, spinZ: 0.11, spinX: -0.05, rotStart: 2, alpha: 0.4 }], ['inv limit 60', { invEnabled: true, invDELimit: 60, invRadius: 0.9 }], ...Array.from({ length: 11 }, (_, vi) => [`variant ${vi}`, { ...VARIANT_DEFAULTS[vi], surfVariant: vi, juliaCX: 0.3, juliaCY: -0.2, juliaCZ: 0.1 }]),
+    ['pre+spin+start', { preAlpha: 0.5, preBeta: -0.3, spinZ: 0.11, spinX: -0.05, rotStart: 2, alpha: 0.4 }], ['inv limit 60', { invEnabled: true, invDELimit: 60, invRadius: 0.9 }], ...Array.from({ length: 16 }, (_, vi) => [`variant ${vi}`, { ...VARIANT_DEFAULTS[vi], surfVariant: vi, juliaCX: 0.3, juliaCY: -0.2, juliaCZ: 0.1 }]),
     ['mod2 stack+z+swap', { ...VARIANT_DEFAULTS[3], surfVariant: 3, vStack1: 1, vStack2: 5, vStack3: 6, vZFold: true, vSwapXY: true, vSphZ: 0.4, cMult: 0.3, vCSwizzle: 3, scaleVary: 0.1 }],
     ['mod3 flips+folder', { ...VARIANT_DEFAULTS[4], surfVariant: 4, vStack1: 6, vStack2: 2, vEvenFlipY: true, vEvenFlipZ: true, cMult: -0.4, vOffX: 0.2 }],
     ['multi mbox+zrefl', { ...VARIANT_DEFAULTS[6], surfVariant: 6, vStack1: 3, vStack2: 1, vStack3: 4, vMboxFold: true, vZFold: true, influence: 0.7 }],
@@ -72,6 +72,11 @@ void main() { float tr; float d = map(u_p, tr); gl_FragColor = pack(clamp(d / 16
     ['mb inversion mod1', { ...VARIANT_DEFAULTS[2], surfVariant: 2, vSInvOn: true, vSInvOffY: -0.4, vSInvG: 0.8, vSInvA: 2.1, vSInvStart: 1, vSInvStop: 3 }],
     ['mb inversion mod4', { ...VARIANT_DEFAULTS[5], surfVariant: 5, vSInvOn: true, vSInvOffX: 0.5, vSInvG: 1.2, vSInvAddZ: 0.3, vSInvA: 0.9 }],
     ['mb inversion klein', { ...VARIANT_DEFAULTS[8], surfVariant: 8, vSInvOn: true, vSInvOffZ: 0.6, vSInvG: 1.1, vSInvA: 1.5, vSInvStop: 2 }],
+    ['kyma loxodromic', { ...VARIANT_DEFAULTS[11], surfVariant: 11, vLox: 0.9, juliaMode: true, juliaCX: 0.3 }],
+    ['kyma torus', { ...VARIANT_DEFAULTS[12], surfVariant: 12, vTorusR: 0.7, vAxis: 1, influence: 1.3 }],
+    ['kyma ellipsoid', { ...VARIANT_DEFAULTS[13], surfVariant: 13, vEllX: 0.6, vEllY: 1.4, vEllZ: 2 }],
+    ['kyma vortex', { ...VARIANT_DEFAULTS[14], surfVariant: 14, vVortex: 0.7, vVortexDepth: 0.3 }],
+    ['kyma gyroid', { ...VARIANT_DEFAULTS[15], surfVariant: 15, vGyroFreq: 2.5, vGyroL: 0.3 }],
     ['wave ripple', { waveType: 1, waveAmp: 0.2, waveFreq: 3, wavePhase: 0.5, waveStop: 3 }],
     ['wave shear mod1', { ...VARIANT_DEFAULTS[2], surfVariant: 2, waveType: 2, waveAmp: 0.3, waveFreq: 2.5, wavePhaseStep: 0.4, waveAxY: -0.5, waveStop: 4 }],
     ['wave fold', { waveType: 3, waveAmp: 0.6, waveFreq: 2, wavePhase: 1, waveStop: 5 }],
@@ -82,6 +87,10 @@ void main() { float tr; float d = map(u_p, tr); gl_FragColor = pack(clamp(d / 16
   const report = [];
   for (const [name, o] of sets) {
     const v = { ...defaults(), ...o };
+    // Gyroid Surf stretches space strongly at every iteration, so float32
+    // rounding grows with depth (1 iteration agrees to ~0.03%; see README).
+    // Compare it where 32-bit precision still holds.
+    if ((v.surfVariant | 0) === 15) v.iterations = Math.min(v.iterations, 3);
     const prog = compileProgram(gl, VERT, '#define RENDER_MODE 0\n#define SURF_VARIANT ' + (v.surfVariant | 0) + '\n' + fractalMapSource(v.foldType, v.foldType2 - 1, { variant: v.surfVariant, stack: [v.vStack1, v.vStack2, v.vStack3, v.vStack4, v.vStack5] }).replace(/^#define RENDER_MODE \d+\n#define SURF_VARIANT \d+\n/, '') + tail);
     gl.useProgram(prog.prog);
     setUniforms(gl, prog, sceneUniforms(v));
@@ -92,6 +101,10 @@ void main() { float tr; float d = map(u_p, tr); gl_FragColor = pack(clamp(d / 16
       const p = [(Math.random() * 2 - 1) * R, (Math.random() * 2 - 1) * R, (Math.random() * 2 - 1) * R];
       const cpu = map(p).d;
       if (cpu > 15 || cpu < 0.005) continue; // outside packable range / ill-conditioned near surface
+      // Points where a float32-sized change of the input moves the CPU result
+      // by > 0.2% can't be reproduced by any 32-bit GPU (Gyroid Surf has many).
+      const nudge = [1, -1].map(sg => map(p.map((x, j) => x * (1 + sg * 6e-8 * (j + 1)))).d);
+      if (nudge.some(d2 => Math.abs(d2 - cpu) > 2e-3 * cpu)) continue;
       setUniforms(gl, prog, { u_p: p });
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
@@ -483,6 +496,36 @@ await page.screenshot({ path: `${OUT}/ui-full.png`, timeout: 600000 });
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => !window.__surf.mutGrid.isOpen && window.__surf.renderer.live.samples >= 1, null, { timeout: 600000 });
   ok(true, 'mutation grid: Esc closes and the viewer resumes');
+}
+
+// ── Kyma's own formulas (11–15): presets render, selector shows the right controls ──
+// Presets load through the dropdown; the formula selector applies the defaults.
+for (const key of ['kyma_lox', 'kyma_torus', 'kyma_ell', 'kyma_vortex', 'kyma_gyroid']) {
+  await page.evaluate(k => { const s = document.getElementById('presetSelect'); s.value = k; s.dispatchEvent(new Event('change')); window.__surf.state.setMany({ maxSamples: 1, renderScale: 0.2 }); window.__surf.renderer.resetLive(); }, key);
+  await page.waitForFunction(() => window.__surf.renderer.live.samples >= 1 && !window.__surf.renderer.isCompiling(), null, { timeout: 900000 });
+  const r = await page.evaluate(() => {
+    const c = document.getElementById('view'), g = c.getContext('webgl'), buf = new Uint8Array(c.width * c.height * 4);
+    g.readPixels(0, 0, c.width, c.height, g.RGBA, g.UNSIGNED_BYTE, buf);
+    let lit = 0; for (let i = 0; i < buf.length; i += 4) if (buf[i] + buf[i + 1] + buf[i + 2] > 30) lit++;
+    return { v: window.__surf.state.values.surfVariant, lit: lit / (buf.length / 4) };
+  });
+  ok(r.v >= 11 && r.lit > 0.05, `preset ${key}: formula ${r.v}, renders (${(r.lit * 100).toFixed(0)}% lit)`);
+}
+const OWN = { 11: ['vLox', 'vAxis'], 12: ['vTorusR', 'vAxis'], 13: ['vEllX', 'vEllY', 'vEllZ'], 14: ['vVortex', 'vVortexDepth', 'vAxis'], 15: ['vGyroFreq', 'vGyroL'] };
+const ALL = [...new Set(Object.values(OWN).flat())];
+for (const vi of [11, 12, 13, 14, 15, 1]) {
+  await page.evaluate(vi => {
+    const sel = [...document.querySelectorAll('select')].find(s => [...s.options].some(o => o.textContent.startsWith('Loxodromic')));
+    sel.value = String(vi); sel.dispatchEvent(new Event('change'));
+  }, vi);
+  await page.waitForTimeout(1500); // gates refresh on the next frame
+  const r = await page.evaluate(([vi, ALL]) => {
+    const open = id => { const n = document.querySelector(`#dockLeft [data-id="${id}"]`) || [...document.querySelectorAll('#dockLeft select')].find(s => s.closest('.select-row')?.textContent.startsWith('Axis'))?.closest('.select-row'); return !!n && !n.closest('.gate-hidden'); };
+    return { v: window.__surf.state.values.surfVariant, open: Object.fromEntries(ALL.map(id => [id, open(id)])), desc: document.body.textContent.includes(['', 'Kali / DarkBeam', '', '', '', '', '', '', '', '', '', 'Loxodromic Surf (Kyma):', 'Torus Surf (Kyma):', 'Ellipsoid Surf (Kyma):', 'Vortex Surf (Kyma):', 'Gyroid Surf (Kyma):'][vi]) };
+  }, [vi, ALL]);
+  const want = OWN[vi] || [];
+  const right = ALL.every(id => r.open[id] === want.includes(id));
+  ok(r.v === vi && right && r.desc, `formula selector → ${vi}: defaults + description, shows exactly its own controls ${right ? "" : JSON.stringify(r.open)}`);
 }
 
 ok(errors.length === 0, `no console errors${errors.length ? ':\n' + errors.join('\n') : ''}`);

@@ -4,7 +4,7 @@ import { PARAMS, GROUPS, defaults, coerce, PARAM_BY_ID } from '../engine/params.
 import { State } from '../engine/state.js';
 import { cameraBasis, pixelRay } from '../engine/camera.js';
 import { fractalRotation, dot, sub, normalize, length, cross, wrapPi, mat3Mul } from '../engine/vec.js';
-import { makeDE, makeWave, march, viewScore } from '../engine/de.js';
+import { makeDE, makeWave, makeSurfStep, march, viewScore } from '../engine/de.js';
 import { Sequencer, MODE, EASE } from '../engine/sequencer.js';
 import { encodeDiscovery, decodeDiscovery, evolve, rebirth, makeProject, parseProject, BIOMES } from '../engine/presets.js';
 import { sceneUniforms, jitterFor, lensFor } from '../engine/renderer.js';
@@ -187,12 +187,12 @@ section('fold types');
     const combos = [];
     for (let a = 0; a < FOLD_GLSL.length; a++) for (let b = -1; b < FOLD_GLSL.length; b++) combos.push([a, b, 0]);
     for (const mode of [1, 2]) for (let a = 0; a < FOLD_GLSL.length; a++) combos.push([a, -1, mode], [a, (a + 3) % FOLD_GLSL.length, mode]);
-    for (let variant = 1; variant < 11; variant++) for (const mode of [0, 1, 2]) {
+    for (let variant = 1; variant < 16; variant++) for (const mode of [0, 1, 2]) {
       const stack = [1 + (variant % 6), (variant + mode) % 7, (variant * 3) % 7, mode * 2, 6 - mode].map(x => Math.min(6, x));
       combos.push([0, -1, mode, variant, stack]);
     }
     // Material builds (HAS_MAT) of every variant × mode, with and without texture LOD.
-    for (let variant = 0; variant < 11; variant++) for (const mode of [0, 1, 2]) for (const texLod of [true, false]) combos.push([0, -1, mode, variant, undefined, true, texLod]);
+    for (let variant = 0; variant < 16; variant++) for (const mode of [0, 1, 2]) for (const texLod of [true, false]) combos.push([0, -1, mode, variant, undefined, true, texLod]);
     for (const [a, b, mode, variant = 0, stack, mat = false, lod] of combos) {
       writeFileSync('/tmp/surf-combo.frag', '#version 100\n' + fractalFrag(a, b, { mode, variant, stack, mat, texLod: lod ?? (a + b + variant) % 2 === 0 }));
       const r = spawnSync('glslangValidator', ['/tmp/surf-combo.frag']);
@@ -537,6 +537,69 @@ section('wave warp');
   ok(W([1, 0, 0], 1, 0)[0][0] !== 1, 'makeWave applies the shape (iteration gating lives in the DE loop)');
   const gated = makeDE({ ...defs, waveType: 2, waveAmp: 0.5, waveStart: 40, waveStop: 41 });
   ok(gated([0.3, 0.2, 0.1]).d === makeDE(defs)([0.3, 0.2, 0.1]).d, 'iteration range outside the iteration count has no effect');
+}
+
+section('kyma surf variants 11–15');
+{
+  const { VARIANT_DESC, VARIANT_DEFAULTS: VD } = await import('../engine/presets.js');
+  const { SURF_VARIANTS } = await import('../engine/params.js');
+  ok(VARIANT_DESC.length === SURF_VARIANTS.length && SURF_VARIANTS.every((n, i) => typeof VARIANT_DESC[i] === 'string' && VARIANT_DESC[i].length > 20), 'every formula has its own description (no gaps)');
+  ok([11, 12, 13, 14, 15].every(i => VARIANT_DESC[i].startsWith(SURF_VARIANTS[i].replace(/ \(Kyma\)$/, ''))), 'descriptions line up with formula names');
+  ok(SURF_VARIANTS.every((_, i) => VD[i]), 'every formula has defaults');
+  const { VARIANT_DEFAULTS } = await import('../engine/presets.js');
+  const names = { 11: 'Loxodromic', 12: 'Torus', 13: 'Ellipsoid', 14: 'Vortex', 15: 'Gyroid' };
+  const shapes = {
+    11: [{ vLox: 0.6 }, { vLox: -2.5, vAxis: 0 }, { vLox: 1.3, vAxis: 1, influence: 0.6 }],
+    12: [{ vTorusR: 0.6 }, { vTorusR: 1.4, vAxis: 1 }, { vTorusR: 0.2, vAxis: 0, influence: 1.5 }],
+    13: [{ vEllX: 1, vEllY: 1, vEllZ: 1.8 }, { vEllX: 0.3, vEllY: 2.5, vEllZ: 1 }, { vEllX: 2, vEllY: 0.5, vEllZ: 0.4, influence: 0.5 }],
+    14: [{ vVortex: 0.4 }, { vVortex: -1.6, vVortexDepth: 0.8, vAxis: 1 }, { vVortex: 0.1, vVortexDepth: -1.5, vAxis: 0 }],
+    15: [{ vGyroFreq: 2, vGyroL: 0.4 }, { vGyroFreq: 5, vGyroL: 0.1 }, { vGyroFreq: 0.7, vGyroL: 0.9, influence: 0.7 }],
+  };
+  for (const vi of [11, 12, 13, 14, 15]) {
+    // 1. The step never stretches space by more than its reported fac.
+    for (const [si, sh] of shapes[vi].entries()) {
+      const v = { ...defaults(), ...VARIANT_DEFAULTS[vi], surfVariant: vi, minR: 0.5, foldX: 1, foldY: 1, ...sh };
+      const step = makeSurfStep(v);
+      let worst = 0;
+      for (let i = 0; i < 600; i++) {
+        const r = 0.2 + 2.6 * ((i * 0.618) % 1);
+        const p = [Math.sin(i * 1.7) * r, Math.cos(i * 2.3) * r, Math.sin(i * 0.9 + 1) * r];
+        const a = step(p, 2);
+        for (let d = 0; d < 4; d++) {
+          const h = [Math.sin(i + d * 3.1), Math.cos(i * 1.3 + d), Math.sin(d * 7.7 - i)].map(x => x * 1e-7);
+          const b = step([p[0] + h[0], p[1] + h[1], p[2] + h[2]], 2);
+          worst = Math.max(worst, Math.hypot(b.z[0] - a.z[0], b.z[1] - a.z[1], b.z[2] - a.z[2]) / Math.hypot(...h) / a.fac);
+        }
+      }
+      ok(worst <= 1 + 1e-3, `${names[vi]} #${si + 1}: step stretch ≤ fac (max ratio ${worst.toFixed(4)})`);
+    }
+    // 2. Finite DE everywhere, also with Julia, C-Mult, scale vary and rotation.
+    const m = makeDE({ ...defaults(), ...VARIANT_DEFAULTS[vi], surfVariant: vi, juliaMode: true, juliaCX: 0.3, cMult: 0.2, scaleVary: 0.1, alpha: 0.3, iterations: 20 });
+    let fin = true;
+    for (let i = 0; i < 200; i++) { const d = m([Math.sin(i) * 3, Math.cos(i * 1.3) * 3, Math.sin(i * 0.7) * 3]).d; if (!(d >= 0) || !Number.isFinite(d)) fin = false; }
+    ok(fin, `${names[vi]}: DE finite and non-negative`);
+  }
+  // 3. Neutral settings reduce exactly to Mandelbulber Amazing Surf (variant 1).
+  const base = { ...defaults(), ...VARIANT_DEFAULTS[1], surfVariant: 1, juliaMode: true, juliaCX: 0.4, juliaCY: -0.2, cMult: 0.1, alpha: 0.2, iterations: 14 };
+  const ref = makeDE(base);
+  const neutral = { 11: { vLox: 0 }, 12: { vTorusR: 0 }, 13: { vEllX: 1, vEllY: 1, vEllZ: 1 }, 14: { vVortex: 0, vVortexDepth: 0 }, 15: { vGyroFreq: 1, vGyroL: 50 } };
+  for (const vi of [11, 12, 13, 14, 15]) {
+    const mm = makeDE({ ...base, surfVariant: vi, ...neutral[vi] });
+    let worst = 0;
+    for (let i = 0; i < 120; i++) {
+      const p = [Math.sin(i * 1.1) * 2, Math.cos(i * 0.7) * 2, Math.sin(i * 2.9) * 2];
+      const a = ref(p).d, b = mm(p).d;
+      worst = Math.max(worst, Math.abs(a - b) / Math.max(a, 1e-9));
+    }
+    ok(worst < 1e-6, `${names[vi]} with neutral settings = Amazing Surf (max rel diff ${worst.toExponential(1)})`);
+  }
+  // 4. The variant control actually changes the shape.
+  for (const vi of [11, 12, 13, 14, 15]) {
+    const a = makeDE({ ...base, ...VARIANT_DEFAULTS[vi], surfVariant: vi }), b = makeDE({ ...base, surfVariant: vi, ...neutral[vi] });
+    let diff = 0;
+    for (let i = 0; i < 60; i++) { const p = [Math.sin(i) * 1.5, Math.cos(i * 1.3) * 1.5, Math.sin(i * 0.4) * 1.5]; diff += Math.abs(a(p).d - b(p).d); }
+    ok(diff > 1e-3, `${names[vi]}: its control changes the DE`);
+  }
 }
 
 section('mutation grid / textures / materials');

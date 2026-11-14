@@ -86,6 +86,13 @@ export function sceneUniforms(v, scaleOverride) {
     u_vSInvA: v.vSInvA ?? 1,
     u_vSInvStart: v.vSInvStart | 0,
     u_vSInvStop: v.vSInvStop ?? 1,
+    // Kyma surf variants 11–15.
+    u_vAxis: v.vAxis ?? 2,
+    u_vLox: v.vLox ?? 0.6,
+    u_vTorusR: v.vTorusR ?? 0.6,
+    u_vEll: [v.vEllX ?? 1, v.vEllY ?? 1, v.vEllZ ?? 1.8],
+    u_vVortex: [v.vVortex ?? 0.4, v.vVortexDepth || 0],
+    u_vGyro: [v.vGyroFreq ?? 2, v.vGyroL ?? 0.4],
     u_waveType: v.waveType | 0,
     u_waveAmp: v.waveAmp ?? 0,
     u_waveFreq: v.waveFreq ?? 1,

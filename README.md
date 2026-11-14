@@ -1,4 +1,4 @@
-# Kyma v2.16.1
+# Kyma v2.17.0
 
 **Kyma** (κῦμα, Greek for "wave") is a progressive WebGL1 raymarcher for Kali's **Amazing Surf** fractal family. It includes all nine of Mandelbulber's surf formulas, path tracing, volumetric glow and environment lighting. It has no dependencies and no build step. It was formerly *Amazing Surf*; old project files, discovery strings (`SURF2:`) and saved panel layouts still load.
 
@@ -201,6 +201,51 @@ variant.
   A = 0.05–0.2 and Until Iter = 2–3.
 - Presets: the **Kyma Waves** group (Gyroid Tide, Rippled Chalice, Liquid
   Shear, Rippled Reliquary, Wave-Striped Shells).
+
+## Kyma's own formulas (variants 11–15)
+
+Five formulas that aren't in Mandelbulber. Each keeps the Amazing Surf
+skeleton (scale vary → X/Y box fold → sphere fold → C-Mult → rotation → +c,
+bailout 100) and changes the sphere fold or what follows it. With its control
+at the neutral value, each reduces to Mandelbulber Amazing Surf (tested).
+
+| Formula | What changes | Controls |
+|---|---|---|
+| **Loxodromic Surf** | Inside the fold, z also turns about an axis by Twist × ln(1/r²). The inversion becomes a loxodromic (spiral) Möbius map: shells coil like nautilus and ammonite. | Spiral Twist, Axis |
+| **Torus Surf** | The fold measures and scales the offset from a **ring** (radius R) instead of a point: ρ' = R + k(ρ − R), height' = k·height. Tubes, handles and rings where Amazing Surf makes bubbles. | Ring Radius, Axis |
+| **Ellipsoid Surf** | The fold's radius is measured in stretched space, so its boundaries are ellipsoids. Directional growth: horns, stalactites, wind-blown shapes. | EX, EY, EZ |
+| **Vortex Surf** | After each fold, a twist about an axis by Vortex Twist × ln(ρ) + Twist per Height × height, so every level of detail winds into the same logarithmic spiral. | Vortex Twist, Twist per Height, Axis |
+| **Gyroid Surf** | After the box fold, space is also reflected across the sheets of a gyroid (±Fold Limit from g = 0), the way the box fold reflects across flat walls. | Gyroid Frequency, Gyroid Fold Limit |
+
+**Distance estimate.** Each iteration's step reports `fac`, a bound on how
+much it can stretch space, and the derivative runs as dr = dr·fac + 1. For
+these formulas `fac` is the exact largest stretch, not an approximation:
+
+- **Sphere fold, all five:** the largest singular value of k·I + z⊗∇k, in
+  closed form. This is also exact when Influence ≠ 1, where Amazing Surf
+  itself only approximates.
+- **Torus:** the larger of the meridian stretch and the ring-tangent stretch
+  |ρ'|/ρ.
+- **Loxodromic and Vortex:** the twist adds at most 1 + 2|Twist| and
+  1 + |Twist| + |per Height|·ρ respectively.
+- **Gyroid:** the analytic Jacobian of the sheet reflection, from the
+  gyroid's Hessian, with its largest eigenvalue taken in closed form.
+
+The tests sample hundreds of points per formula and setting and find the real
+stretch never exceeds `fac` (worst ratio 1.0000). The GPU matches the CPU.
+Gyroid reflection stretches space strongly near curved sheets (often 3× or
+more), so Gyroid Surf marches more slowly than the others. Raise Fold Limit
+or lower the frequency if it gets slow.
+
+Only programs for these formulas contain their code. Variants 0–10 compile
+to exactly the same shaders as before.
+
+## Brad's scenes
+
+Saved projects added as presets (**Brad's scenes** in the dropdown). A preset
+can name a procedural sky (`env`), loaded with it: **BS 1** (Amazing Surf M3D
+variant, Julia, Mandelbulber inversion, Brushed Metal texture with bump,
+Sunset sky, tilted stone ground).
 
 ## Mutation grid
 

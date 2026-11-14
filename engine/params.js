@@ -55,11 +55,12 @@ export const MAT_TYPES = ['Standard', 'Metal', 'Glass', 'Iridescent', 'Glow'];
 export const MAT_ASSIGN = ['Single (Slot A)', 'Fold Count', 'Orbit Trap', 'Colour Index', 'Crease Depth', 'Height', 'Facing Up'];
 export const TEX_SOURCES = ['Loaded Image', 'Marble', 'Cells', 'Rust', 'Brushed Metal', 'Bark', 'Lava Cracks', 'Stone'];
 
-export const SURF_VARIANTS = ['Classic (v2 engine)', 'Amazing Surf (Mandelbulber)', 'Mod 1', 'Mod 2', 'Mod 3', 'Mod 4', 'Multi', 'M3D (Mandelbulb3D)', 'Klein', 'Klein V2', 'Amazing IFS'];
+export const SURF_VARIANTS = ['Classic (v2 engine)', 'Amazing Surf (Mandelbulber)', 'Mod 1', 'Mod 2', 'Mod 3', 'Mod 4', 'Multi', 'M3D (Mandelbulb3D)', 'Klein', 'Klein V2', 'Amazing IFS', 'Loxodromic Surf (Kyma)', 'Torus Surf (Kyma)', 'Ellipsoid Surf (Kyma)', 'Vortex Surf (Kyma)', 'Gyroid Surf (Kyma)'];
 export const STACK_FOLDS = ['Off', 'Box (Tglad)', 'Inverse Fold  f−||z|−f|', 'Abs Offset  |z+f|', 'Conditional Reflect', 'DarkBeam Double', 'Clamped Folder'];
 // Variant groups (indices into SURF_VARIANTS) used to gate controls.
 const V_STACK = [2, 3, 4, 6];         // fold-stack variants
-const V_ALL_BUT_KLEIN = [0, 1, 2, 3, 4, 5, 6, 7, 10]; // variants that take c (IFS only with Add c)
+const V_ALL_BUT_KLEIN = [0, 1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15];
+const V_KYMA = [11, 12, 13, 14, 15]; // Kyma's own surf variants // variants that take c (IFS only with Add c)
 
 export const FOLD_NAMES = ['Type 1 (Box)', 'Type 2', 'Type 3', 'Surf XY (Mandelbulber)', 'Tetrahedral + Box', 'Octahedral + Box', 'Icosahedral + Box', 'Polar Kaleidoscope', 'Smooth Box (tanh)', 'Abs Shift (Kali)', 'Diagonal Box'];
 
@@ -125,10 +126,22 @@ export const PARAMS = [
   { id: 'vMinDEStop', label: 'Smooth DE Until Iteration', type: 'range', group: 'variant', min: 1, max: 250, step: 1, def: 250, int: true, hardMin: 1, hardMax: 250, gate: 'vMinDE' },
   { id: 'vMinDEStart', label: 'Smooth DE From Iteration', type: 'range', group: 'variant', min: 0, max: 20, step: 1, def: 0, int: true, hardMin: 0, hardMax: 39, gate: 'vMinDE' },
 
+  // ── Kyma's own surf variants (11–15) ──
+  { id: 'vAxis', label: 'Axis (ring / twist)', type: 'select', group: 'variant', options: ['X', 'Y', 'Z'], def: 2, interp: 'step', gate: 'surfVariant', gateEq: [11, 12, 14] },
+  { id: 'vLox', label: 'Spiral Twist', type: 'range', group: 'variant', min: -3, max: 3, step: 0.001, def: 0.6, hardMin: -50, hardMax: 50, gate: 'surfVariant', gateEq: 11, mutate: true, fine: true },
+  { id: 'vTorusR', label: 'Ring Radius', type: 'range', group: 'variant', min: 0, max: 2, step: 0.001, def: 0.6, hardMin: 0, hardMax: 20, gate: 'surfVariant', gateEq: 12, mutate: true, fine: true },
+  { id: 'vEllX', label: 'EX', type: 'range', group: 'variant', min: 0.2, max: 3, step: 0.001, def: 1, hardMin: 0.02, hardMax: 20, row: 'vell', section: 'Ellipsoid Stretch', gate: 'surfVariant', gateEq: 13, mutate: true },
+  { id: 'vEllY', label: 'EY', type: 'range', group: 'variant', min: 0.2, max: 3, step: 0.001, def: 1, hardMin: 0.02, hardMax: 20, row: 'vell', gate: 'surfVariant', gateEq: 13, mutate: true },
+  { id: 'vEllZ', label: 'EZ', type: 'range', group: 'variant', min: 0.2, max: 3, step: 0.001, def: 1.8, hardMin: 0.02, hardMax: 20, row: 'vell', gate: 'surfVariant', gateEq: 13, mutate: true },
+  { id: 'vVortex', label: 'Vortex Twist', type: 'range', group: 'variant', min: -2, max: 2, step: 0.001, def: 0.4, hardMin: -20, hardMax: 20, gate: 'surfVariant', gateEq: 14, mutate: true, fine: true },
+  { id: 'vVortexDepth', label: 'Twist per Height', type: 'range', group: 'variant', min: -2, max: 2, step: 0.001, def: 0, hardMin: -20, hardMax: 20, gate: 'surfVariant', gateEq: 14, mutate: true, fine: true },
+  { id: 'vGyroFreq', label: 'Gyroid Frequency', type: 'range', group: 'variant', min: 0.2, max: 8, step: 0.001, def: 2, hardMin: 0.01, hardMax: 100, gate: 'surfVariant', gateEq: 15, mutate: true, fine: true },
+  { id: 'vGyroL', label: 'Gyroid Fold Limit', type: 'range', group: 'variant', min: 0.02, max: 2, step: 0.001, def: 0.4, hardMin: 0.001, hardMax: 20, gate: 'surfVariant', gateEq: 15, mutate: true, fine: true },
+
   // ── Geometric core ──────────────────────────────────────────────────────
   { id: 'scale', label: 'Base Scale', type: 'range', group: 'geo', min: -4, max: 4, step: 0.001, def: 2, mutate: true },
   { id: 'scaleVary', label: 'Scale Vary', type: 'range', group: 'geo', min: -2, max: 2, step: 0.001, def: 0, mutate: true },
-  { id: 'influence', label: 'Influence', type: 'range', group: 'geo', min: 0, max: 2, step: 0.001, def: 1, mutate: true, gate: 'surfVariant', gateEq: [0, 1, 2, 6] },
+  { id: 'influence', label: 'Influence', type: 'range', group: 'geo', min: 0, max: 2, step: 0.001, def: 1, mutate: true, gate: 'surfVariant', gateEq: [0, 1, 2, 6, ...V_KYMA] },
   { id: 'minR', label: 'Min Radius', type: 'range', group: 'geo', min: 0, max: 2.5, step: 0.001, def: 0.5, hardMin: 0, mutate: true },
   { id: 'cylinder', label: 'Cylindrical Sphere-Fold', type: 'bool', group: 'geo', def: false },
 
@@ -148,8 +161,8 @@ export const PARAMS = [
   { id: 'juliaCX', label: 'JX', type: 'range', group: 'fold', min: -2, max: 2, step: 0.01, def: 0, row: 'julia', section: 'Julia Seed (C)', gate: 'juliaMode', mutate: true },
   { id: 'juliaCY', label: 'JY', type: 'range', group: 'fold', min: -2, max: 2, step: 0.01, def: 0, row: 'julia', gate: 'juliaMode', mutate: true },
   { id: 'juliaCZ', label: 'JZ', type: 'range', group: 'fold', min: -2, max: 2, step: 0.01, def: 0, row: 'julia', gate: 'juliaMode', mutate: true },
-  { id: 'noC', label: "Don't Add c", type: 'bool', group: 'fold', def: false, gate: 'surfVariant', gateEq: [0, 1, 2, 3, 4, 5, 6, 7] },
-  { id: 'cMult', label: 'C-Mult', type: 'range', group: 'fold', min: -2, max: 2, step: 0.01, def: 0, mutate: true, gate: 'surfVariant', gateEq: [0, 1, 3, 4, 5, 6] },
+  { id: 'noC', label: "Don't Add c", type: 'bool', group: 'fold', def: false, gate: 'surfVariant', gateEq: [0, 1, 2, 3, 4, 5, 6, 7, ...V_KYMA] },
+  { id: 'cMult', label: 'C-Mult', type: 'range', group: 'fold', min: -2, max: 2, step: 0.01, def: 0, mutate: true, gate: 'surfVariant', gateEq: [0, 1, 3, 4, 5, 6, ...V_KYMA] },
   { id: 'preAlpha', label: 'Pre α', type: 'range', group: 'fold', min: -PI, max: PI, step: 0.001, def: 0, section: 'Pre-Fold Rotation (tilts the fold planes)', mutate: true, fine: true },
   { id: 'preBeta', label: 'Pre β', type: 'range', group: 'fold', min: -PI, max: PI, step: 0.001, def: 0, mutate: true, fine: true },
   { id: 'preGamma', label: 'Pre γ', type: 'range', group: 'fold', min: -PI, max: PI, step: 0.001, def: 0, mutate: true, fine: true },

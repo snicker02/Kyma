@@ -21,7 +21,7 @@ import { Panel } from './ui/panel.js';
 import { MutationGrid } from './ui/mutation.js';
 import { proceduralTexture, imageTexture, TEX_KEYS } from './engine/textures.js';
 
-export const VERSION = '2.16.1';
+export const VERSION = '2.17.0';
 
 const $ = id => document.getElementById(id);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
@@ -200,7 +200,9 @@ const presetGroups = [
   ['Classic engine', k => !BIOMES[k].group && !BIOMES[k].v.surfVariant],
   ['Mandelbulber Amazing Surf', k => !BIOMES[k].group && !!BIOMES[k].v.surfVariant],
   ['Amazing IFS', k => BIOMES[k].group === 'ifs'],
+  ['Kyma Originals (new formulas)', k => BIOMES[k].group === 'kyma'],
   ['Kyma Waves', k => BIOMES[k].group === 'wave'],
+  ["Brad's scenes", k => BIOMES[k].group === 'brad'],
   ['batjorge.com · Mandelbulber scenes', k => BIOMES[k].group === 'batjorge'],
 ];
 for (const [label, test] of presetGroups) {
@@ -218,6 +220,7 @@ presetSel.addEventListener('change', () => {
   // Crimson Chalice), so reset them to defaults unless the preset sets them.
   // The ground is staging and is left as you set it.
   state.setMany({ ...PRESET_RESET, ...b.v });
+  if (b.env) applyEnv(proceduralEnv(b.env), b.v.envMode || 2); // the sky the scene was made with
   toast(`Preset: ${b.label}`);
 });
 panel.group('presets').append(presetSel);
@@ -273,7 +276,7 @@ panel.controls.get('surfVariant').wrap.after(variantDesc);
 const variantDefaultsBtn = el('button', 'action-btn sm', 'Load Variant Defaults');
 variantDefaultsBtn.title = "Reset this formula's parameters to Mandelbulber's defaults (converted to this app's units)";
 variantDesc.after(variantDefaultsBtn);
-panel.gateNode(variantDefaultsBtn, { gate: 'surfVariant', gateEq: [1, 2, 3, 4, 5, 6, 7, 8, 9] });
+panel.gateNode(variantDefaultsBtn, { gate: 'surfVariant', gateEq: [1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15] });
 const syncVariantDesc = () => { variantDesc.textContent = VARIANT_DESC[state.get('surfVariant')]; };
 function loadVariantDefaults(announce) {
   const vi = state.get('surfVariant');
