@@ -47,6 +47,11 @@ export function pixelRay(cam, lens, px, py, w, h) {
   return normalize(add(add(mul(cam.forward, lens), mul(cam.right, ux)), mul(cam.up, uy)));
 }
 
+// Light 2 / 3 (n = 2, 3): same rules as the main light, own keys.
+export function extraLightPos(v, cam, n) {
+  return lightWorldPos({ lightX: v[`light${n}X`] ?? 0, lightY: v[`light${n}Y`] ?? 0, lightZ: v[`light${n}Z`] ?? 0, lightRelative: !!v[`light${n}Relative`] }, cam);
+}
+
 export function lightWorldPos(v, cam) {
   const l = [v.lightX, v.lightY, v.lightZ];
   if (!v.lightRelative) return l;

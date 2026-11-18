@@ -21,7 +21,7 @@ import { Panel } from './ui/panel.js';
 import { MutationGrid } from './ui/mutation.js';
 import { proceduralTexture, imageTexture, TEX_KEYS } from './engine/textures.js';
 
-export const VERSION = '2.17.0';
+export const VERSION = '2.18.0';
 
 const $ = id => document.getElementById(id);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
@@ -1176,6 +1176,9 @@ function frame(now) {
       // Keep the formula; drop the optional material layer this GPU couldn't build.
       toast('This GPU could not build the materials / texture shader — materials, texture and crease turned off', 5000);
       state.setMany({ matOn: false, texMode: 0, creaseAmt: 0 });
+    } else if (scene.__xl) {
+      toast('This GPU could not build the extra-lights shader — Light 2 and Light 3 turned off', 5000);
+      state.setMany({ light2On: false, light3On: false });
     } else {
       toast('Shader build failed for this combination — reverting to surface / box fold', 4000);
       state.setMany({ foldType: 0, foldType2: 0, renderMode: 0, surfVariant: 0 });

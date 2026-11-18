@@ -130,45 +130,62 @@ export function gyroFoldMap(z, f, L) {
 }
 
 export function makeSurfStep(v) {
-  const variant = v.surfVariant | 0, axis = v.vAxis ?? 2;
+  const variant = v.surfVariant | 0;
   const minR2 = v.minR * v.minR, infl = v.influence ?? 1;
   const fx = v.foldX, fy = v.foldY;
-  const lox = v.vLox ?? 0, R0 = v.vTorusR ?? 0.6;
+  const lox = [v.vLoxX || 0, v.vLoxY || 0, v.vLoxZ ?? 0.6];
+  const ringR = [v.vTorusRX ?? 0.6, v.vTorusRY ?? 0.6, v.vTorusRZ ?? 0.6];
+  const ringOn = [!!v.vTorusOnX, !!v.vTorusOnY, v.vTorusOnZ ?? true];
+  const lastRing = ringOn[2] ? 2 : ringOn[1] ? 1 : ringOn[0] ? 0 : -1;
   const ell = [v.vEllX ?? 1, v.vEllY ?? 1, v.vEllZ ?? 1];
-  const vb = v.vVortex ?? 0, vd = v.vVortexDepth ?? 0;
+  const vb = [v.vVortexX || 0, v.vVortexY || 0, v.vVortexZ ?? 0.4];
+  const vd = [v.vVortexDX || 0, v.vVortexDY || 0, v.vVortexDZ || 0];
   const gf = v.vGyroFreq ?? 2, gL = v.vGyroL ?? 0.4;
   const surfM = (rr, sc) => sc / (rr < minR2 ? minR2 : Math.min(rr, 1));
   const scl = (z, k) => [z[0] * k, z[1] * k, z[2] * k];
+  // Ring fold about axis a (mirrors ringFold in glsl.js): { z, fac }.
+  const ringFold = (z, a, R, sc) => {
+    let w = toAxisV(z, a);
+    const rho = Math.hypot(w[0], w[1]);
+    const qv = [rho - R, w[2], 0], rr = dot3(qv);
+    const m = surfM(rr, sc), k = (m - 1) * infl + 1;
+    const gk = rr > minR2 && rr < 1 ? scl(qv, -infl * m * 2 / rr) : [0, 0, 0];
+    const rho2 = R + k * (rho - R);
+    w = rho > 1e-9 ? [w[0] * rho2 / rho, w[1] * rho2 / rho, w[2] * k] : [rho2, 0, w[2] * k];
+    return { z: fromAxisV(w, a), fac: Math.max(sigRank1(k, qv, gk), abs(rho2) / Math.max(rho, 1e-9)) };
+  };
   return (z0, actualScale) => {
     let z = [boxF(z0[0], fx), boxF(z0[1], fy), z0[2]];
-    let fac = 1;
-    if (variant === 15) { const r = gyroFoldMap(z, gf, gL); z = r.z; fac = r.gfac; }
-    let rr, grr, w, rho, qv;
-    if (variant === 12) {
-      w = toAxisV(z, axis); rho = Math.hypot(w[0], w[1]);
-      qv = [rho - R0, w[2], 0]; rr = dot3(qv); grr = scl(qv, 2);
-    } else if (variant === 13) {
+    let fac = 1, rr = dot3(z);
+    if (variant === 15) { const r = gyroFoldMap(z, gf, gL); z = r.z; fac = r.gfac; rr = dot3(z); }
+    if (variant === 12 && lastRing >= 0) {
+      for (let a = 0; a < 3; a++) {
+        if (!ringOn[a]) continue;
+        const r = ringFold(z, a, ringR[a], a === lastRing ? actualScale : 1);
+        z = r.z; fac *= r.fac;
+      }
+      return { z, fac, rr };
+    }
+    let grr;
+    if (variant === 13) {
       rr = (z[0] / ell[0]) ** 2 + (z[1] / ell[1]) ** 2 + (z[2] / ell[2]) ** 2;
       grr = [2 * z[0] / ell[0] ** 2, 2 * z[1] / ell[1] ** 2, 2 * z[2] / ell[2] ** 2];
     } else { rr = dot3(z); grr = scl(z, 2); }
     const m = surfM(rr, actualScale), k = (m - 1) * infl + 1;
     const gk = rr > minR2 && rr < 1 ? scl(grr, -infl * m / rr) : [0, 0, 0];
     if (variant === 11) {
-      const th = lox * Math.log(1 / Math.min(Math.max(rr, Math.max(minR2, 1e-12)), 1));
-      z = twistAxisV(z, axis, th);
-      fac = sigRank1(k, z, gk) * (rr > minR2 && rr < 1 ? 1 + 2 * abs(lox) : 1);
+      const lnr = Math.log(1 / Math.min(Math.max(rr, Math.max(minR2, 1e-12)), 1));
+      for (let a = 0; a < 3; a++) z = twistAxisV(z, a, lox[a] * lnr);
+      fac *= sigRank1(k, z, gk) * (rr > minR2 && rr < 1 ? 1 + 2 * (abs(lox[0]) + abs(lox[1]) + abs(lox[2])) : 1);
       z = scl(z, k);
-    } else if (variant === 12) {
-      const rho2 = R0 + k * (rho - R0);
-      w = rho > 1e-9 ? [w[0] * rho2 / rho, w[1] * rho2 / rho, w[2] * k] : [rho2, 0, w[2] * k];
-      z = fromAxisV(w, axis);
-      fac = Math.max(sigRank1(k, qv, gk), abs(rho2) / Math.max(rho, 1e-9));
     } else if (variant === 14) {
-      const sk = sigRank1(k, z, gk);
+      fac *= sigRank1(k, z, gk);
       z = scl(z, k);
-      const wv = toAxisV(z, axis), rv = Math.hypot(wv[0], wv[1]);
-      z = twistAxisV(z, axis, vb * Math.log(rv + 1e-4) + vd * wv[2]);
-      fac = sk * (1 + abs(vb) + abs(vd) * rv);
+      for (let a = 0; a < 3; a++) {
+        const w = toAxisV(z, a), rv = Math.hypot(w[0], w[1]);
+        fac *= 1 + abs(vb[a]) + abs(vd[a]) * rv;
+        z = twistAxisV(z, a, vb[a] * Math.log(rv + 1e-4) + vd[a] * w[2]);
+      }
     } else {
       fac *= sigRank1(k, z, gk);
       z = scl(z, k);

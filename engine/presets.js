@@ -128,10 +128,10 @@ export const VARIANT_DEFAULTS = {
     vIfsAddX: 0, vIfsAddY: 0, vIfsAddZ: 0, vAddC: false, vMinDE: false, vMinDEStart: 0, vMinDEStop: 250, vPolyStop: 1,
  vPolyOn: false, polarN: 6, vOffX: 0, vOffY: 0, vOffZ: 0 },
   // Kyma's own variants: Amazing Surf settings plus the variant's shape control.
-  11: { ...MB_COMMON, scale: 2, minR: R4, influence: 1, vAxis: 2, vLox: 0.6 },
-  12: { ...MB_COMMON, scale: 2, minR: R4, influence: 1, vAxis: 2, vTorusR: 0.6 },
+  11: { ...MB_COMMON, scale: 2, minR: R4, influence: 1, vLoxX: 0, vLoxY: 0, vLoxZ: 0.6 },
+  12: { ...MB_COMMON, scale: 2, minR: R4, influence: 1, vTorusOnX: false, vTorusOnY: false, vTorusOnZ: true, vTorusRX: 0.6, vTorusRY: 0.6, vTorusRZ: 0.6 },
   13: { ...MB_COMMON, scale: 2, minR: R4, influence: 1, vEllX: 1, vEllY: 1, vEllZ: 1.8 },
-  14: { ...MB_COMMON, scale: 2, minR: R4, influence: 1, vAxis: 2, vVortex: 0.4, vVortexDepth: 0 },
+  14: { ...MB_COMMON, scale: 2, minR: R4, influence: 1, vVortexX: 0, vVortexY: 0, vVortexZ: 0.4, vVortexDX: 0, vVortexDY: 0, vVortexDZ: 0 },
   15: { ...MB_COMMON, scale: 2, minR: R4, influence: 1, vGyroFreq: 2, vGyroL: 0.4 },
 };
 
@@ -147,10 +147,10 @@ export const VARIANT_DESC = [
   'Klein: surf iterations (with Y/Z swap) for the first N, then a full box fold × scale tail that produces Kleinian-like limit structure. No c is added.',
   'Klein V2: Klein with an optional N-fold polyfold (Polar Sectors) at the start of each iteration; Y/Z swap applies whenever Z folding is off.',
   'Amazing IFS: Amazing Surf Mod 4 with an IFS fold (per axis |z| − offset) after the box fold. No c by default, so it makes bounded sculptures, not sheets. Smooth DE (min over iterations) and Fold amounts colouring give the glossy striped look.',
-  'Loxodromic Surf (Kyma): Amazing Surf whose sphere fold also turns about an axis by Spiral Twist × ln(1/r²). The inversion becomes a spiral (loxodromic) Möbius map, so shells coil like nautilus and ammonite instead of nesting as balls.',
-  'Torus Surf (Kyma): the sphere fold measures and scales the distance from a ring of radius Ring Radius instead of from a point, so the fold makes tubes, handles and rings where Amazing Surf makes bubbles.',
+  'Loxodromic Surf (Kyma): Amazing Surf whose sphere fold also turns about X, Y and Z (each with its own Spiral Twist) by Twist × ln(1/r²). The inversion becomes a spiral (loxodromic) Möbius map, so shells coil like nautilus and ammonite instead of nesting as balls.',
+  'Torus Surf (Kyma): the sphere fold measures and scales the distance from a ring instead of from a point, giving tubes, handles and rings where Amazing Surf makes bubbles. Rings around X, Y and Z can be switched on together, each with its own radius (folded in that order; the last one carries the scale).',
   'Ellipsoid Surf (Kyma): the sphere fold works in stretched space, so its boundaries are ellipsoids (EX, EY, EZ). Elongated, directional growth like horns or stalactites. The DE uses the exact largest stretch of the fold.',
-  'Vortex Surf (Kyma): after each fold, space is twisted about an axis by Vortex Twist × ln(radius) (plus Twist per Height), so every level of detail winds into the same logarithmic spiral, like a whirlpool through the whole fractal.',
+  'Vortex Surf (Kyma): after each fold, space is twisted about X, then Y, then Z, each by its own Vortex Twist × ln(radius) plus Twist per Height, so every level of detail winds into logarithmic spirals, like whirlpools through the whole fractal.',
   'Gyroid Surf (Kyma): after the X/Y box fold, space is also reflected across the sheets of a gyroid (Gyroid Frequency, Fold Limit), the way a box fold reflects across flat walls. TPMS weave inside Amazing Surf structure.'
 ];
 
@@ -253,6 +253,24 @@ export function encodeDiscovery(values) {
   return PREFIX + b64urlEncode(JSON.stringify(o));
 }
 
+// v2.17.0 had one Axis selector for Loxodromic / Torus / Vortex Surf; from
+// v2.17.1 each axis has its own controls. Old values map onto the axis that
+// was selected (same shape exactly). Unknown or new keys pass through.
+export function migrateLegacy(obj) {
+  if (!obj || typeof obj !== 'object') return obj;
+  const legacy = ['vAxis', 'vLox', 'vTorusR', 'vVortex', 'vVortexDepth'];
+  if (!legacy.some(k => k in obj)) return obj;
+  const o = { ...obj };
+  const A = 'XYZ'[[0, 1, 2].includes(o.vAxis) ? o.vAxis : 2];
+  if ('vLox' in o) { for (const X of 'XYZ') o['vLox' + X] = X === A ? o.vLox : 0; }
+  if ('vTorusR' in o) { for (const X of 'XYZ') { o['vTorusOn' + X] = X === A; o['vTorusR' + X] = o.vTorusR; } }
+  if ('vVortex' in o || 'vVortexDepth' in o) {
+    for (const X of 'XYZ') { o['vVortex' + X] = X === A ? (o.vVortex ?? 0.4) : 0; o['vVortexD' + X] = X === A ? (o.vVortexDepth || 0) : 0; }
+  }
+  for (const k of legacy) delete o[k];
+  return o;
+}
+
 // Returns a full, validated value set (defaults filled in) or throws.
 export function decodeDiscovery(str) {
   str = String(str).trim();
@@ -263,6 +281,7 @@ export function decodeDiscovery(str) {
     obj = j.params ?? j; // also accept a project file pasted in
   } else throw new Error('Not a discovery string');
   if (!obj || typeof obj !== 'object') throw new Error('Malformed discovery string');
+  obj = migrateLegacy(obj);
   const out = defaults();
   for (const id in obj) {
     const p = PARAM_BY_ID.get(id);
@@ -283,15 +302,15 @@ export function parseProject(text) {
   const j = JSON.parse(text);
   if (!j || typeof j !== 'object') throw new Error('Not a project file');
   const params = decodeDiscovery(JSON.stringify(j.params ?? {}));
-  return { params, keyframes: Array.isArray(j.keyframes) ? j.keyframes : [] };
+  return { params, keyframes: Array.isArray(j.keyframes) ? j.keyframes.map(migrateLegacy) : [] };
 }
 
 
 // Kyma Originals: one starting scene for each of Kyma's own formulas (variants 11–15).
 Object.assign(BIOMES, {
-  kyma_lox: { group: 'kyma', label: 'Coiled Ammonite', v: { ...sceneDefaults(), ...VARIANT_DEFAULTS[11], vAxis: 2, vLox: 1.365696, scale: 2.376281, minR: 0.47124, foldX: 1.312104, foldY: 0.924321, juliaCX: 1.091985, juliaCY: -1.011124, juliaCZ: 1.036025, alpha: 0.190229, beta: 0.379197, gamma: -0.039677, iterations: 14, rotX: 0.591459, rotY: 0.986472, dist: 2.648945, palette: 6, colorShift: 0.195515, volumetric: 0.15, fog: 0.03, brightness: 1.4, aoStrength: 0.5, surfVariant: 11 } },
-  kyma_torus: { group: 'kyma', label: 'Ring Swirl', v: { ...sceneDefaults(), ...VARIANT_DEFAULTS[12], vAxis: 1, vTorusR: 0.769314, scale: 2.326139, minR: 0.885258, foldX: 0.639607, foldY: 1.271876, juliaCX: -0.815382, juliaCY: -0.128025, juliaCZ: -0.708001, alpha: -0.549686, beta: 0.225518, gamma: -0.519185, iterations: 14, rotX: 0.775117, rotY: -0.915255, dist: 5.781991, palette: 3, colorShift: 0.123322, volumetric: 0.15, fog: 0.03, brightness: 1.4, aoStrength: 0.5, surfVariant: 12 } },
+  kyma_lox: { group: 'kyma', label: 'Coiled Ammonite', v: migrateLegacy({ ...sceneDefaults(), ...VARIANT_DEFAULTS[11], vAxis: 2, vLox: 1.365696, scale: 2.376281, minR: 0.47124, foldX: 1.312104, foldY: 0.924321, juliaCX: 1.091985, juliaCY: -1.011124, juliaCZ: 1.036025, alpha: 0.190229, beta: 0.379197, gamma: -0.039677, iterations: 14, rotX: 0.591459, rotY: 0.986472, dist: 2.648945, palette: 6, colorShift: 0.195515, volumetric: 0.15, fog: 0.03, brightness: 1.4, aoStrength: 0.5, surfVariant: 11 }) },
+  kyma_torus: { group: 'kyma', label: 'Ring Swirl', v: migrateLegacy({ ...sceneDefaults(), ...VARIANT_DEFAULTS[12], vAxis: 1, vTorusR: 0.769314, scale: 2.326139, minR: 0.885258, foldX: 0.639607, foldY: 1.271876, juliaCX: -0.815382, juliaCY: -0.128025, juliaCZ: -0.708001, alpha: -0.549686, beta: 0.225518, gamma: -0.519185, iterations: 14, rotX: 0.775117, rotY: -0.915255, dist: 5.781991, palette: 3, colorShift: 0.123322, volumetric: 0.15, fog: 0.03, brightness: 1.4, aoStrength: 0.5, surfVariant: 12 }) },
   kyma_ell: { group: 'kyma', label: 'Ellipsoid Coral', v: { ...sceneDefaults(), ...VARIANT_DEFAULTS[13], vEllX: 1.005804, vEllY: 1.054832, vEllZ: 1.913397, scale: 1.98644, minR: 0.303979, foldX: 1.048046, foldY: 0.910804, juliaCX: 0.541289, juliaCY: 1.452297, juliaCZ: 0.763368, alpha: -0.431454, beta: 0.153621, gamma: -0.493518, iterations: 14, rotX: -0.260276, rotY: -0.6999, dist: 4.000104, palette: 12, colorShift: 0.696214, volumetric: 0.15, fog: 0.03, brightness: 1.4, aoStrength: 0.5, surfVariant: 13 } },
-  kyma_vortex: { group: 'kyma', label: 'Whirlpool Lace', v: { ...sceneDefaults(), ...VARIANT_DEFAULTS[14], vAxis: 2, vVortex: -0.206667, vVortexDepth: 0, scale: 2.392454, minR: 0.354652, foldX: 1.503036, foldY: 0.933654, juliaCX: 0.674679, juliaCY: -0.668622, juliaCZ: 0.463327, alpha: -0.343542, beta: 0.488755, gamma: 0.504317, iterations: 14, rotX: 0.75859, rotY: -0.578295, dist: 4.937142, palette: 3, colorShift: 0.302843, volumetric: 0.15, fog: 0.03, brightness: 1.4, aoStrength: 0.5, surfVariant: 14 } },
+  kyma_vortex: { group: 'kyma', label: 'Whirlpool Lace', v: migrateLegacy({ ...sceneDefaults(), ...VARIANT_DEFAULTS[14], vAxis: 2, vVortex: -0.206667, vVortexDepth: 0, scale: 2.392454, minR: 0.354652, foldX: 1.503036, foldY: 0.933654, juliaCX: 0.674679, juliaCY: -0.668622, juliaCZ: 0.463327, alpha: -0.343542, beta: 0.488755, gamma: 0.504317, iterations: 14, rotX: 0.75859, rotY: -0.578295, dist: 4.937142, palette: 3, colorShift: 0.302843, volumetric: 0.15, fog: 0.03, brightness: 1.4, aoStrength: 0.5, surfVariant: 14 }) },
   kyma_gyroid: { group: 'kyma', label: 'Gyroid Strata', v: { ...sceneDefaults(), ...VARIANT_DEFAULTS[15], vGyroFreq: 0.9, vGyroL: 0.8, scale: 2.09145, minR: 0.636024, foldX: 1.198747, foldY: 0.744122, juliaCX: -0.703863, juliaCY: -0.826281, juliaCZ: -0.297161, alpha: 0.245192, beta: 0.139598, gamma: 0.221038, iterations: 10, rotX: -0.354565, rotY: 1.250975, dist: 5.574581, palette: 3, colorShift: 0.554698, volumetric: 0.15, fog: 0.03, brightness: 1.4, aoStrength: 0.5, surfVariant: 15 } },
 });

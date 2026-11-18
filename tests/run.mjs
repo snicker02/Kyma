@@ -549,10 +549,10 @@ section('kyma surf variants 11–15');
   const { VARIANT_DEFAULTS } = await import('../engine/presets.js');
   const names = { 11: 'Loxodromic', 12: 'Torus', 13: 'Ellipsoid', 14: 'Vortex', 15: 'Gyroid' };
   const shapes = {
-    11: [{ vLox: 0.6 }, { vLox: -2.5, vAxis: 0 }, { vLox: 1.3, vAxis: 1, influence: 0.6 }],
-    12: [{ vTorusR: 0.6 }, { vTorusR: 1.4, vAxis: 1 }, { vTorusR: 0.2, vAxis: 0, influence: 1.5 }],
+    11: [{ vLoxZ: 0.6 }, { vLoxX: -2.5, vLoxZ: 0 }, { vLoxX: 0.7, vLoxY: 1.3, vLoxZ: -0.4, influence: 0.6 }],
+    12: [{ vTorusOnZ: true, vTorusRZ: 0.6 }, { vTorusOnX: true, vTorusOnY: true, vTorusOnZ: false, vTorusRX: 1.4, vTorusRY: 0.3 }, { vTorusOnX: true, vTorusOnY: true, vTorusOnZ: true, vTorusRX: 0.2, vTorusRY: 0.9, vTorusRZ: 0.5, influence: 1.5 }],
     13: [{ vEllX: 1, vEllY: 1, vEllZ: 1.8 }, { vEllX: 0.3, vEllY: 2.5, vEllZ: 1 }, { vEllX: 2, vEllY: 0.5, vEllZ: 0.4, influence: 0.5 }],
-    14: [{ vVortex: 0.4 }, { vVortex: -1.6, vVortexDepth: 0.8, vAxis: 1 }, { vVortex: 0.1, vVortexDepth: -1.5, vAxis: 0 }],
+    14: [{ vVortexZ: 0.4 }, { vVortexX: -1.6, vVortexDX: 0.8, vVortexZ: 0 }, { vVortexX: 0.3, vVortexY: -0.7, vVortexZ: 0.5, vVortexDY: -1.5, vVortexDZ: 0.4 }],
     15: [{ vGyroFreq: 2, vGyroL: 0.4 }, { vGyroFreq: 5, vGyroL: 0.1 }, { vGyroFreq: 0.7, vGyroL: 0.9, influence: 0.7 }],
   };
   for (const vi of [11, 12, 13, 14, 15]) {
@@ -582,7 +582,7 @@ section('kyma surf variants 11–15');
   // 3. Neutral settings reduce exactly to Mandelbulber Amazing Surf (variant 1).
   const base = { ...defaults(), ...VARIANT_DEFAULTS[1], surfVariant: 1, juliaMode: true, juliaCX: 0.4, juliaCY: -0.2, cMult: 0.1, alpha: 0.2, iterations: 14 };
   const ref = makeDE(base);
-  const neutral = { 11: { vLox: 0 }, 12: { vTorusR: 0 }, 13: { vEllX: 1, vEllY: 1, vEllZ: 1 }, 14: { vVortex: 0, vVortexDepth: 0 }, 15: { vGyroFreq: 1, vGyroL: 50 } };
+  const neutral = { 11: { vLoxX: 0, vLoxY: 0, vLoxZ: 0 }, 12: { vTorusOnX: false, vTorusOnY: false, vTorusOnZ: false }, 13: { vEllX: 1, vEllY: 1, vEllZ: 1 }, 14: { vVortexX: 0, vVortexY: 0, vVortexZ: 0, vVortexDX: 0, vVortexDY: 0, vVortexDZ: 0 }, 15: { vGyroFreq: 1, vGyroL: 50 } };
   for (const vi of [11, 12, 13, 14, 15]) {
     const mm = makeDE({ ...base, surfVariant: vi, ...neutral[vi] });
     let worst = 0;
@@ -593,6 +593,30 @@ section('kyma surf variants 11–15');
     }
     ok(worst < 1e-6, `${names[vi]} with neutral settings = Amazing Surf (max rel diff ${worst.toExponential(1)})`);
   }
+  // 3b. A ring of radius 0 is a sphere fold: Torus with one ring at R = 0 = Amazing Surf.
+  for (const X of 'XYZ') {
+    const mm = makeDE({ ...base, surfVariant: 12, vTorusOnX: X === 'X', vTorusOnY: X === 'Y', vTorusOnZ: X === 'Z', ['vTorusR' + X]: 0 });
+    let w = 0;
+    for (let i = 0; i < 80; i++) { const p = [Math.sin(i) * 2, Math.cos(i * 0.9) * 2, Math.sin(i * 2.2) * 2]; w = Math.max(w, Math.abs(ref(p).d - mm(p).d) / Math.max(ref(p).d, 1e-9)); }
+    ok(w < 1e-6, `Torus: single ring ${X} with radius 0 = Amazing Surf (${w.toExponential(1)})`);
+  }
+  // 3c. Axes are independent: each axis alone differs from the others, and together differs from any one.
+  for (const [vi, keys] of [[11, ['vLoxX', 'vLoxY', 'vLoxZ']], [14, ['vVortexX', 'vVortexY', 'vVortexZ']]]) {
+    const one = keys.map(k => makeDE({ ...base, surfVariant: vi, ...Object.fromEntries(keys.map(q => [q, q === k ? 0.7 : 0])) }));
+    const all = makeDE({ ...base, surfVariant: vi, ...Object.fromEntries(keys.map(q => [q, 0.7])) });
+    const sig = f => [0, 1, 2, 3, 4, 5].map(i => f([Math.sin(i) * 1.4, Math.cos(i * 1.7) * 1.4, Math.sin(i * 0.6) * 1.4]).d.toFixed(9)).join();
+    const sigs = [...one.map(sig), sig(all)];
+    ok(new Set(sigs).size === 4, `${names[vi]}: X, Y, Z twists are independent`);
+  }
+  // 3d. Saved v2.17.0 scenes (one Axis selector) convert to the same shape.
+  const { migrateLegacy, decodeDiscovery, parseProject } = await import('../engine/presets.js');
+  const mv = migrateLegacy({ vAxis: 1, vLox: 0.9, vTorusR: 0.7, vVortex: -0.3, vVortexDepth: 0.2, scale: 2 });
+  ok(mv.vLoxX === 0 && mv.vLoxY === 0.9 && mv.vLoxZ === 0 && mv.vTorusOnY === true && !mv.vTorusOnX && !mv.vTorusOnZ && mv.vTorusRY === 0.7
+    && mv.vVortexY === -0.3 && mv.vVortexDY === 0.2 && mv.vVortexX === 0 && !('vAxis' in mv) && mv.scale === 2, 'old Axis + value → that axis’s new controls');
+  const pj = parseProject(JSON.stringify({ app: 'kyma', params: { surfVariant: 11, vAxis: 0, vLox: 1.1 }, keyframes: [{ surfVariant: 14, vAxis: 2, vVortex: 0.5 }] }));
+  ok(pj.params.vLoxX === 1.1 && pj.params.vLoxZ === 0 && pj.keyframes[0].vVortexZ === 0.5 && pj.keyframes[0].vVortexX === 0, 'old projects and their keyframes convert on load');
+  ok(decodeDiscovery(JSON.stringify({ surfVariant: 12, vAxis: 0, vTorusR: 0.4 })).vTorusOnX === true, 'old discovery strings convert');
+
   // 4. The variant control actually changes the shape.
   for (const vi of [11, 12, 13, 14, 15]) {
     const a = makeDE({ ...base, ...VARIANT_DEFAULTS[vi], surfVariant: vi }), b = makeDE({ ...base, surfVariant: vi, ...neutral[vi] });
@@ -665,6 +689,47 @@ section('mutation grid / textures / materials');
   ok(su0.u_matOn === false && su0.u_texMode === 0 && su0.u_crease === 0, 'materials, texture and crease are off by default');
   let pt;
   ok((pt = fractalFrag(0, -1, { mode: 1, mat: true })).includes('thinFilm(max(dot(n, -rd), 0.0), mt.iridT)') && pt.includes('exitSolid(p - n * eN * 2.0, dir, eN, ok)'), 'path tracer has the film and glass lobes');
+}
+
+section('extra lights');
+{
+  const { fractalFrag: ff } = await import('../engine/glsl.js');
+  const { specOf, specKey } = await import('../engine/renderer.js');
+  const strip = (src, defs) => {
+    const out = [], st = [];
+    for (const line of src.split('\n')) {
+      const t = line.trim(), on = st.every(x => x);
+      const m = t.match(/^#ifdef (\w+)/);
+      if (m) { st.push(defs.includes(m[1]) || m[1] === 'HAS_TEX_LOD'); continue; }
+      if (/^#if/.test(t)) { st.push(true); if (on) out.push(line); continue; }
+      if (/^#else/.test(t)) { const top = st.pop(); st.push(!top); continue; }
+      if (/^#endif/.test(t)) { st.pop(); continue; }
+      if (on) out.push(line);
+    }
+    return out.join('\n').replace(/\/\/.*$/gm, '');
+  };
+  const sites = (x, fn) => (x.match(new RegExp(`[^\\w.]${fn}\\(`, 'g')) || []).length;
+  for (const mode of [0, 1, 2]) {
+    const cls = strip(ff(0, -1, { mode }), []), xl = strip(ff(0, -1, { mode, xl: true }), ['HAS_XLIGHTS']);
+    const both = strip(ff(0, -1, { mode, xl: true, mat: true }), ['HAS_XLIGHTS', 'HAS_MAT']);
+    ok(!/u_l2Pos|extraLights|xvol/.test(cls), `mode ${mode}: classic build has no extra-light code`);
+    ok(/u_l2Pos/.test(xl) && /#define HAS_XLIGHTS/.test(ff(0, -1, { mode, xl: true })), `mode ${mode}: light build defines HAS_XLIGHTS`);
+    // D3D (Windows) inlines every call: keep the extra shadow-ray sites few.
+    const extraShadow = sites(xl, 'softShadow') + sites(xl, 'shadowVis') - sites(cls, 'softShadow') - sites(cls, 'shadowVis');
+    ok(extraShadow <= 2, `mode ${mode}: extra lights add ${extraShadow} shadow-ray call sites (≤ 2)`);
+    const extraMap = sites(both, 'map') - sites(cls, 'map');
+    ok(extraMap <= 4, `mode ${mode}: materials + lights add ${extraMap} map() call sites (≤ 4)`);
+  }
+  const d = defaults();
+  const off = sceneUniforms(d);
+  ok(!off.__xl && off.u_lOn[0] === 0 && off.u_lOn[1] === 0, 'extra lights are off by default (classic program)');
+  const on = sceneUniforms({ ...d, light2On: true, light2Color: '#ff0000', light2Int: 2, light3On: false });
+  ok(on.__xl && on.u_lOn[0] === 1 && Math.abs(on.u_l2Col[0] - 2) < 1e-9 && on.u_l2Col[1] === 0, 'Light 2 colour × intensity reaches the shader');
+  ok(on.u_l2Pos[0] === d.light2X && on.u_l2Pos[1] === d.light2Y && on.u_l2Pos[2] === d.light2Z, 'Light 2 sits at its world position');
+  const rel = sceneUniforms({ ...d, light3On: true, light3Relative: true, light3X: 0, light3Y: 0, light3Z: 0 });
+  ok(rel.u_l3Pos.every((c, i) => Math.abs(c - rel.u_camPos[i]) < 1e-9), 'Light 3 "Follows Camera" at offset 0 sits on the camera');
+  ok(specKey(specOf(on)) !== specKey(specOf(off)) && specKey(specOf(on)).endsWith('|xl'), 'light build gets its own program key');
+  ok(['light2On', 'light2X', 'light2Color', 'light2Int', 'light2Shadows', 'light2Relative', 'light3On', 'light3Z'].every(id => PARAM_BY_ID.get(id)?.group === 'light'), 'Light 2 / 3 controls live in Atmosphere & Light');
 }
 
 section('mandelbulber import');

@@ -13,7 +13,7 @@
 
 import { VERT, DISPLAY_FRAG, fractalFrag } from './glsl.js';
 import { compileProgram, finishProgram, setUniforms, detectAccumFormat, createTarget, deleteTarget } from './gl.js';
-import { cameraBasis, lightWorldPos } from './camera.js';
+import { cameraBasis, lightWorldPos, extraLightPos } from './camera.js';
 import { gradientSpec, gradientKey, gradientScale, buildGradientLUT, LUT_SIZE } from './gradients.js';
 import { fractalRotation, mat3ToColumnMajor, hexToRgb, fract, mat3Mul, rotX, rotY, objectTransform, eulerDeg, transpose3 } from './vec.js';
 
@@ -87,11 +87,12 @@ export function sceneUniforms(v, scaleOverride) {
     u_vSInvStart: v.vSInvStart | 0,
     u_vSInvStop: v.vSInvStop ?? 1,
     // Kyma surf variants 11–15.
-    u_vAxis: v.vAxis ?? 2,
-    u_vLox: v.vLox ?? 0.6,
-    u_vTorusR: v.vTorusR ?? 0.6,
+    u_vLox: [v.vLoxX || 0, v.vLoxY || 0, v.vLoxZ ?? 0.6],
+    u_vTorusR: [v.vTorusRX ?? 0.6, v.vTorusRY ?? 0.6, v.vTorusRZ ?? 0.6],
+    u_vTorusOn: [v.vTorusOnX ? 1 : 0, v.vTorusOnY ? 1 : 0, (v.vTorusOnZ ?? true) ? 1 : 0],
     u_vEll: [v.vEllX ?? 1, v.vEllY ?? 1, v.vEllZ ?? 1.8],
-    u_vVortex: [v.vVortex ?? 0.4, v.vVortexDepth || 0],
+    u_vVortex: [v.vVortexX || 0, v.vVortexY || 0, v.vVortexZ ?? 0.4],
+    u_vVortexD: [v.vVortexDX || 0, v.vVortexDY || 0, v.vVortexDZ || 0],
     u_vGyro: [v.vGyroFreq ?? 2, v.vGyroL ?? 0.4],
     u_waveType: v.waveType | 0,
     u_waveAmp: v.waveAmp ?? 0,
@@ -210,6 +211,14 @@ export function sceneUniforms(v, scaleOverride) {
     __gradSpec: gspec,
     u_lightPos: lightWorldPos(v, cam),
     u_lightColor: hexToRgb(v.lightColor),
+    // Light 2 / 3 (compiled in only when one is on: __xl).
+    u_l2Pos: extraLightPos(v, cam, 2),
+    u_l3Pos: extraLightPos(v, cam, 3),
+    u_l2Col: hexToRgb(v.light2Color || '#ffb070').map(c => c * (v.light2Int ?? 0.8)),
+    u_l3Col: hexToRgb(v.light3Color || '#6f8cff').map(c => c * (v.light3Int ?? 0.6)),
+    u_lOn: [v.light2On ? 1 : 0, v.light3On ? 1 : 0],
+    u_lShadow: [(v.light2Shadows ?? true) ? 1 : 0, (v.light3Shadows ?? true) ? 1 : 0],
+    __xl: !!(v.light2On || v.light3On),
     u_bgColor: hexToRgb(v.bgColor),
     u_ambient: v.ambient,
     u_stepAO: v.stepAO,
@@ -249,11 +258,11 @@ export function specOf(scene, modeOverride) {
   let b = classic ? scene.__foldB | 0 : -1;
   if (b === a) b = -1;
   const stack = STACK_VARIANTS.has(variant) ? (scene.__stack || [1, 0, 0, 0, 0]).map(x => x | 0) : [1, 0, 0, 0, 0];
-  return { a, b, variant, stack, mode: (modeOverride ?? scene.__mode) | 0, mat: !!scene.__mat };
+  return { a, b, variant, stack, mode: (modeOverride ?? scene.__mode) | 0, mat: !!scene.__mat, xl: !!scene.__xl };
 }
 
 export function specKey(sp) {
-  return `v${sp.variant}|${sp.a}|${sp.b}|${sp.stack.join('')}|m${sp.mode}${sp.mat ? '|mat' : ''}`;
+  return `v${sp.variant}|${sp.a}|${sp.b}|${sp.stack.join('')}|m${sp.mode}${sp.mat ? '|mat' : ''}${sp.xl ? '|xl' : ''}`;
 }
 
 // Back-compat helper (classic engine).
@@ -389,7 +398,7 @@ export class Renderer {
 
   _startCompile(sp) {
     const gl = this.gl;
-    const opts = { texLod: this.texLod, mode: sp.mode, variant: sp.variant, stack: sp.stack, mat: sp.mat };
+    const opts = { texLod: this.texLod, mode: sp.mode, variant: sp.variant, stack: sp.stack, mat: sp.mat, xl: sp.xl };
     const a = sp.a, b = sp.b;
     if (!this.parallel) {
       try { return { ready: true, prog: compileProgram(gl, VERT, fractalFrag(a, b, opts)) }; }

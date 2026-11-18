@@ -1,4 +1,4 @@
-# Kyma v2.17.0
+# Kyma v2.18.0
 
 **Kyma** (κῦμα, Greek for "wave") is a progressive WebGL1 raymarcher for Kali's **Amazing Surf** fractal family. It includes all nine of Mandelbulber's surf formulas, path tracing, volumetric glow and environment lighting. It has no dependencies and no build step. It was formerly *Amazing Surf*; old project files, discovery strings (`SURF2:`) and saved panel layouts still load.
 
@@ -202,6 +202,29 @@ variant.
 - Presets: the **Kyma Waves** group (Gyroid Tide, Rippled Chalice, Liquid
   Shear, Rippled Reliquary, Wave-Striped Shells).
 
+## Extra lights (Light 2, Light 3)
+
+Two optional lights in **Atmosphere & Light**, below the main light. Each has
+on/off, position (LX / LY / LZ), **Colour**, **Intensity**, **Casts Shadows**
+(needs Soft Shadows on; the ground uses its own Ground Shadows switch) and
+**Follows Camera** (position is then an offset from the camera, like the
+main light's headlight mode).
+
+They light everything the main light does:
+- **Surface mode:** fractal, materials and the ground.
+- **Volumetric glow:** the haze around each light takes its colour.
+- **Path Traced mode:** each light gets its own shadow ray (next-event
+  estimation).
+- **Volumetric mode:** the lights tint the glow.
+
+Unlike the main light, whose colour only tints highlights in Surface mode,
+the extra lights colour both diffuse and specular light. Use them as warm/cool
+rim and fill lights.
+
+The extra-light code is compiled in only when Light 2 or Light 3 is on, so
+scenes without them use exactly the classic shader. If a GPU can't build the
+extra-light program, Kyma says so and turns them off.
+
 ## Kyma's own formulas (variants 11–15)
 
 Five formulas that aren't in Mandelbulber. Each keeps the Amazing Surf
@@ -211,10 +234,10 @@ at the neutral value, each reduces to Mandelbulber Amazing Surf (tested).
 
 | Formula | What changes | Controls |
 |---|---|---|
-| **Loxodromic Surf** | Inside the fold, z also turns about an axis by Twist × ln(1/r²). The inversion becomes a loxodromic (spiral) Möbius map: shells coil like nautilus and ammonite. | Spiral Twist, Axis |
-| **Torus Surf** | The fold measures and scales the offset from a **ring** (radius R) instead of a point: ρ' = R + k(ρ − R), height' = k·height. Tubes, handles and rings where Amazing Surf makes bubbles. | Ring Radius, Axis |
+| **Loxodromic Surf** | Inside the fold, z also turns about X, then Y, then Z, each by its own Twist × ln(1/r²). The inversion becomes a loxodromic (spiral) Möbius map: shells coil like nautilus and ammonite. | Spiral Twist TX / TY / TZ |
+| **Torus Surf** | The fold measures and scales the offset from a **ring** instead of a point: ρ' = R + k(ρ − R), height' = k·height. Tubes, handles and rings where Amazing Surf makes bubbles. Rings around X, Y and Z can be on together, each with its own radius. They fold in that order and the last ring that's on carries the Amazing Surf scale, so one ring alone is the single-ring fold and no rings is the plain sphere fold. | Ring X / Y / Z (on), RX / RY / RZ |
 | **Ellipsoid Surf** | The fold's radius is measured in stretched space, so its boundaries are ellipsoids. Directional growth: horns, stalactites, wind-blown shapes. | EX, EY, EZ |
-| **Vortex Surf** | After each fold, a twist about an axis by Vortex Twist × ln(ρ) + Twist per Height × height, so every level of detail winds into the same logarithmic spiral. | Vortex Twist, Twist per Height, Axis |
+| **Vortex Surf** | After each fold, twists about X, then Y, then Z, each by its own Vortex Twist × ln(ρ) + Twist per Height × height, so every level of detail winds into logarithmic spirals. | Vortex Twist TX / TY / TZ, Twist per Height HX / HY / HZ |
 | **Gyroid Surf** | After the box fold, space is also reflected across the sheets of a gyroid (±Fold Limit from g = 0), the way the box fold reflects across flat walls. | Gyroid Frequency, Gyroid Fold Limit |
 
 **Distance estimate.** Each iteration's step reports `fac`, a bound on how
@@ -224,10 +247,12 @@ these formulas `fac` is the exact largest stretch, not an approximation:
 - **Sphere fold, all five:** the largest singular value of k·I + z⊗∇k, in
   closed form. This is also exact when Influence ≠ 1, where Amazing Surf
   itself only approximates.
-- **Torus:** the larger of the meridian stretch and the ring-tangent stretch
-  |ρ'|/ρ.
-- **Loxodromic and Vortex:** the twist adds at most 1 + 2|Twist| and
-  1 + |Twist| + |per Height|·ρ respectively.
+- **Torus:** per ring, the larger of the meridian stretch and the
+  ring-tangent stretch |ρ'|/ρ.
+- **Loxodromic and Vortex:** the twists add at most
+  1 + 2(|TX| + |TY| + |TZ|) and a factor 1 + |T| + |H|·ρ per axis
+  respectively.
+- **Torus with several rings:** the ring folds' bounds multiply.
 - **Gyroid:** the analytic Jacobian of the sheet reflection, from the
   gyroid's Hessian, with its largest eigenvalue taken in closed form.
 
@@ -236,6 +261,15 @@ stretch never exceeds `fac` (worst ratio 1.0000). The GPU matches the CPU.
 Gyroid reflection stretches space strongly near curved sheets (often 3× or
 more), so Gyroid Surf marches more slowly than the others. Raise Fold Limit
 or lower the frequency if it gets slow.
+
+**Twist per Height** shears space by |H|·ρ, which grows with distance from
+the axis, so it collapses the distance estimate quickly. Keep it small
+(≲ 0.3 on one axis, ≲ 0.05 when other axes also twist) or the surface turns
+to dust.
+
+Scenes saved with v2.17.0 used a single Axis selector. They convert on load
+(projects, keyframes, links and discovery strings) to the matching axis's
+controls and render exactly as before (checked against v2.17.0's code).
 
 Only programs for these formulas contain their code. Variants 0–10 compile
 to exactly the same shaders as before.

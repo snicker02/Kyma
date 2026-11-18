@@ -380,21 +380,22 @@ void applyWave(inout vec3 z, inout float dr, int i) {
 // → C-Mult → rotation → +c) and change the sphere fold or what follows it.
 // Each step reports fac, a bound on how far it can stretch space, and the
 // derivative is tracked as dr = dr·fac + 1 (the +1 is the added c).
-uniform int   u_vAxis;     // 0 X, 1 Y, 2 Z: axis of the ring / twist
-uniform float u_vLox;      // Loxodromic: spiral twist per unit of ln(1/r²)
-uniform float u_vTorusR;   // Torus: ring radius
+uniform vec3  u_vLox;      // Loxodromic: spiral twist about X, Y, Z per unit of ln(1/r²)
+uniform vec3  u_vTorusR;   // Torus: ring radius around X, Y, Z
+uniform vec3  u_vTorusOn;  // Torus: which rings are on (1/0)
 uniform vec3  u_vEll;      // Ellipsoid: semi-axis stretch
-uniform vec2  u_vVortex;   // Vortex: twist per ln(radius), twist per height
+uniform vec3  u_vVortex;   // Vortex: twist per ln(radius) about X, Y, Z
+uniform vec3  u_vVortexD;  // Vortex: twist per height about X, Y, Z
 uniform vec2  u_vGyro;     // Gyroid: frequency, fold limit
 
-// Coordinates with the chosen axis last (w.xy = plane, w.z = along the axis).
-vec3 toAxis(vec3 z) { return u_vAxis == 0 ? z.yzx : (u_vAxis == 1 ? z.zxy : z); }
-vec3 fromAxis(vec3 w) { return u_vAxis == 0 ? w.zxy : (u_vAxis == 1 ? w.yzx : w); }
-vec3 twistAxis(vec3 z, float th) {
-  vec3 w = toAxis(z);
+// Coordinates with axis a last (w.xy = plane, w.z = along the axis).
+vec3 toAxis(vec3 z, int a) { return a == 0 ? z.yzx : (a == 1 ? z.zxy : z); }
+vec3 fromAxis(vec3 w, int a) { return a == 0 ? w.zxy : (a == 1 ? w.yzx : w); }
+vec3 twistAxis(vec3 z, int a, float th) {
+  vec3 w = toAxis(z, a);
   float c = cos(th), s = sin(th);
   w.xy = vec2(c * w.x - s * w.y, s * w.x + c * w.y);
-  return fromAxis(w);
+  return fromAxis(w, a);
 }
 // Sphere-fold factor for radius² rr (Amazing Surf's combined fold and scale).
 float surfM(float rr, float minR2, float sc) { return sc / (rr < minR2 ? minR2 : min(rr, 1.0)); }
@@ -406,6 +407,38 @@ float sigRank1(float k, vec3 u, vec3 g) {
   float a = dot(u, v), b2 = dot(u, u) * dot(v, v);
   float T = 2.0 + 2.0 * a + b2, D = (1.0 + a) * (1.0 + a);
   return abs(k) * sqrt(0.5 * (T + sqrt(max(T * T - 4.0 * D, 0.0))));
+}
+
+// Torus ring fold about axis a, ring radius R, fold scale sc (the Amazing Surf
+// scale on the last ring, 1 on earlier ones). Cylindrical (ρ, h) about the
+// axis: ρ' = R + k(ρ − R), h' = k·h with k from the distance² to the ring.
+// fac is multiplied by its exact stretch: meridian and ring-tangent
+// directions are independent.
+vec3 ringFold(vec3 z, int a, float R, float sc, float minR2, bool colour, inout float fac) {
+  vec3 w = toAxis(z, a);
+  float rho = length(w.xy);
+  vec3 qv = vec3(rho - R, w.z, 0.0);
+  float rr = dot(qv, qv);
+  if (colour) {
+    g_sphCol += g_colOn * (rr < minR2 ? 1.0 : (rr < 1.0 ? 0.5 : 0.0));
+    g_sphAmt += g_colOn * max(rr - minR2, 0.0) * 0.01;
+  }
+  float m = surfM(rr, minR2, sc);
+  float k = (m - 1.0) * u_influence + 1.0;
+  vec3 gk = (rr > minR2 && rr < 1.0) ? -u_influence * m * 2.0 * qv / rr : vec3(0.0);
+  float rho2 = R + k * (rho - R);
+  w.xy = rho > 1e-9 ? w.xy * (rho2 / rho) : vec2(rho2, 0.0);
+  w.z *= k;
+  fac *= max(sigRank1(k, qv, gk), abs(rho2) / max(rho, 1e-9));
+  return fromAxis(w, a);
+}
+
+// Vortex twist about axis a by β·ln ρ + δ·height; stretch ≤ 1 + |β| + |δ|ρ.
+vec3 vortexTwist(vec3 z, int a, float b, float d, inout float fac) {
+  vec3 w = toAxis(z, a);
+  float rv = length(w.xy);
+  fac *= 1.0 + abs(b) + abs(d) * rv;
+  return twistAxis(z, a, b * log(rv + 1e-4) + d * w.z);
 }
 
 #if SURF_VARIANT == 15
@@ -707,14 +740,26 @@ float mapLocal(vec3 p, out float trap) {
     z = gyroFold(z, fac);
   #endif
   #if SURF_VARIANT == 12
-    // Torus Surf: the fold measures and scales the offset from a ring instead
-    // of a point. Cylindrical (ρ, y) about the axis: ρ' = R + k(ρ − R), y' = k·y.
-    vec3 w = toAxis(z);
-    float rho = length(w.xy);
-    vec3 qv = vec3(rho - u_vTorusR, w.z, 0.0);
-    float rr = dot(qv, qv);
-    vec3 grr = 2.0 * qv;
-  #elif SURF_VARIANT == 13
+    // Torus Surf: up to three ring folds, around X, Y and Z, in that order.
+    // Only the last ring that is on carries the Amazing Surf scale, so one
+    // ring alone is the single-ring fold; no ring is the plain sphere fold.
+    int last = u_vTorusOn.z > 0.5 ? 2 : (u_vTorusOn.y > 0.5 ? 1 : (u_vTorusOn.x > 0.5 ? 0 : -1));
+    if (last >= 0) {
+      if (u_vTorusOn.x > 0.5) z = ringFold(z, 0, u_vTorusR.x, last == 0 ? actualScale : 1.0, minR2, last == 0, fac);
+      if (u_vTorusOn.y > 0.5) z = ringFold(z, 1, u_vTorusR.y, last == 1 ? actualScale : 1.0, minR2, last == 1, fac);
+      if (u_vTorusOn.z > 0.5) z = ringFold(z, 2, u_vTorusR.z, actualScale, minR2, true, fac);
+    } else {
+      float rr = dot(z, z);
+      g_sphCol += g_colOn * (rr < minR2 ? 1.0 : (rr < 1.0 ? 0.5 : 0.0));
+      g_sphAmt += g_colOn * max(rr - minR2, 0.0) * 0.01;
+      float m = surfM(rr, minR2, actualScale);
+      float k = (m - 1.0) * u_influence + 1.0;
+      vec3 gk = (rr > minR2 && rr < 1.0) ? -u_influence * m * 2.0 * z / rr : vec3(0.0);
+      fac *= sigRank1(k, z, gk);
+      z *= k;
+    }
+  #else
+  #if SURF_VARIANT == 13
     // Ellipsoid Surf: fold boundaries are ellipsoids (radius measured in a stretched space).
     vec3 ue = z / u_vEll;
     float rr = dot(ue, ue);
@@ -731,31 +776,28 @@ float mapLocal(vec3 p, out float trap) {
     // the largest singular value of k·I + x⊗∇k.
     vec3 gk = (rr > minR2 && rr < 1.0) ? -u_influence * m * grr / rr : vec3(0.0);
   #if SURF_VARIANT == 11
-    // Loxodromic Surf: inside the fold, turn about the axis by an angle that
-    // grows with ln(1/r²): the inversion becomes a loxodromic (spiral) Möbius map.
-    float th = u_vLox * log(1.0 / clamp(rr, max(minR2, 1e-12), 1.0));
-    z = twistAxis(z, th);
-    fac = sigRank1(k, z, gk) * (rr > minR2 && rr < 1.0 ? 1.0 + 2.0 * abs(u_vLox) : 1.0);
+    // Loxodromic Surf: inside the fold, turn about X, then Y, then Z by
+    // Twist × ln(1/r²): the inversion becomes a loxodromic (spiral) Möbius map.
+    // The twists keep |z|, so the stretch is ≤ 1 + 2(|tx| + |ty| + |tz|).
+    float lnr = log(1.0 / clamp(rr, max(minR2, 1e-12), 1.0));
+    z = twistAxis(z, 0, u_vLox.x * lnr);
+    z = twistAxis(z, 1, u_vLox.y * lnr);
+    z = twistAxis(z, 2, u_vLox.z * lnr);
+    fac *= sigRank1(k, z, gk) * (rr > minR2 && rr < 1.0 ? 1.0 + 2.0 * (abs(u_vLox.x) + abs(u_vLox.y) + abs(u_vLox.z)) : 1.0);
     z *= k;
-  #elif SURF_VARIANT == 12
-    float rho2 = u_vTorusR + k * (rho - u_vTorusR);
-    w.xy = rho > 1e-9 ? w.xy * (rho2 / rho) : vec2(rho2, 0.0);
-    w.z *= k;
-    z = fromAxis(w);
-    // Meridian (ρ, y) and ring-tangent directions are independent.
-    fac = max(sigRank1(k, qv, gk), abs(rho2) / max(rho, 1e-9));
   #elif SURF_VARIANT == 14
-    // Vortex Surf: after the fold, twist about the axis by β·ln ρ + δ·height,
-    // so every scale winds into the same logarithmic spiral.
-    float sk = sigRank1(k, z, gk);
+    // Vortex Surf: after the fold, twist about X, then Y, then Z, each by its
+    // Twist × ln ρ + Twist per Height × height, so every scale winds into
+    // logarithmic spirals.
+    fac *= sigRank1(k, z, gk);
     z *= k;
-    vec3 wv = toAxis(z);
-    float rv = length(wv.xy);
-    z = twistAxis(z, u_vVortex.x * log(rv + 1e-4) + u_vVortex.y * wv.z);
-    fac = sk * (1.0 + abs(u_vVortex.x) + abs(u_vVortex.y) * rv);
+    z = vortexTwist(z, 0, u_vVortex.x, u_vVortexD.x, fac);
+    z = vortexTwist(z, 1, u_vVortex.y, u_vVortexD.y, fac);
+    z = vortexTwist(z, 2, u_vVortex.z, u_vVortexD.z, fac);
   #else
     fac *= sigRank1(k, z, gk);
     z *= k;
+  #endif
   #endif
     dr = dr * fac + 1.0;
     if (abs(u_cMult) > 0.001) z += offset.yxz * u_cMult;
@@ -1052,6 +1094,39 @@ vec3 skyColor(vec3 d) {
   return u_envMode == 2 ? envDir(d, u_envBlur) * u_envIntensity : u_bgColor;
 }
 
+// ═══ Extra lights (Light 2, Light 3) ══════════════════════════════════════
+// Compiled in only when one of them is on (HAS_XLIGHTS), so the classic
+// program is unchanged. Both are handled in one loop: one softShadow call site.
+#ifdef HAS_XLIGHTS
+uniform vec3 u_l2Pos;
+uniform vec3 u_l3Pos;
+uniform vec3 u_l2Col;    // colour × intensity
+uniform vec3 u_l3Col;
+uniform vec2 u_lOn;      // Light 2 / 3 on
+uniform vec2 u_lShadow;  // Light 2 / 3 cast shadows
+
+vec3 xLightPos(int i) { return i == 0 ? u_l2Pos : u_l3Pos; }
+vec3 xLightCol(int i) { return i == 0 ? u_l2Col : u_l3Col; }
+
+// Diffuse + specular from the extra lights at a surface point.
+vec3 extraLights(vec3 p, vec3 n, vec3 rd, float eN, vec3 diffAlb, vec3 specCol, float shin, bool allowShadow) {
+  vec3 sum = vec3(0.0);
+  for (int i = 0; i < 2; i++) {
+    if ((i == 0 ? u_lOn.x : u_lOn.y) < 0.5) continue;
+    vec3 toL = xLightPos(i) - p;
+    float ld = length(toL);
+    vec3 L = toL / ld;
+    float diff = max(dot(n, L), 0.0);
+    if (diff <= 0.0) continue;
+    float sh = 1.0;
+    if (allowShadow && (i == 0 ? u_lShadow.x : u_lShadow.y) > 0.5) sh = softShadow(p + n * eN * 2.0, L, min(ld, 20.0), u_shadowSoft, eN);
+    float spec = pow(max(dot(reflect(rd, n), L), 0.0), shin);
+    sum += xLightCol(i) * (diffAlb * diff + specCol * spec) * sh;
+  }
+  return sum;
+}
+#endif
+
 // Surface-mode ground shading: textured albedo, light with the fractal's shadow
 // and contact AO, environment light, reflections of the fractal and sky for
 // water / mirror, then a distance haze into the sky so there is no hard horizon.
@@ -1068,6 +1143,9 @@ vec3 shadeGround(vec3 p, vec3 rd, float t, vec3 bg) {
   float ao = u_aoStrength > 0.0 ? mix(1.0, surfaceAO(p, n, 1.0 + t * 0.05), u_aoStrength) : 1.0;
   vec3 col = alb * (diff * sh + u_ambient) * ao;
   if (u_envMode > 0) col += alb * envDir(n, 6.0) * u_envLight * ao;
+#ifdef HAS_XLIGHTS
+  col += extraLights(p, n, rd, eN, alb * ao, vec3(groundReflectance(n, rd)), 120.0, u_groundShadows);
+#endif
 
   float refl = groundReflectance(n, rd);
   if (refl > 0.0) {
@@ -1389,6 +1467,9 @@ void main() {
 
   float eps0 = 0.0003 / u_detail;
   float t = 0.0, trap = 0.0, steps = 0.0, vol = 0.0;
+#ifdef HAS_XLIGHTS
+  vec3 xvol = vec3(0.0);
+#endif
   bool hit = false, exhausted = true, onGround = false;
 
   for (int i = 0; i < 1024; i++) {
@@ -1403,6 +1484,12 @@ void main() {
       float scatter = 1.0 / (1.0 + dot(dl, dl) * 2.0);
       vol += scatter * min(d, 0.08) * u_volumetric;
     }
+#ifdef HAS_XLIGHTS
+    if (u_volumetric > 0.0) {
+      vec3 d2 = u_l2Pos - p, d3 = u_l3Pos - p;
+      xvol += (u_lOn.x * u_l2Col / (1.0 + dot(d2, d2) * 2.0) + u_lOn.y * u_l3Col / (1.0 + dot(d3, d3) * 2.0)) * min(d, 0.08) * u_volumetric;
+    }
+#endif
     if (d < eps0 * (1.0 + t * 0.1)) { hit = true; exhausted = false; break; }
     t += marchStep(d);
     steps = float(i);
@@ -1460,6 +1547,21 @@ void main() {
 #ifdef HAS_MAT
     if (u_matOn) col = shadeMat(mt, p, n, rd, lightDir, diff, sh, ao, eN);
 #endif
+#ifdef HAS_XLIGHTS
+    {
+      vec3 dA = baseCol;
+      vec3 sC = vec3(0.4);
+      float shn = 32.0;
+  #ifdef HAS_MAT
+      if (u_matOn) {
+        dA = mt.albedo * (1.0 - mt.metal) * (1.0 - mt.glass) * (1.0 - 0.75 * mt.iridW);
+        sC = mix(vec3(0.04), mt.albedo, mt.metal) + mt.gloss * 0.5;
+        shn = min(2.0 / max(mt.rough * mt.rough, 0.002), 512.0);
+      }
+  #endif
+      col += extraLights(p, n, rd, eN, dA * ao, sC, shn, u_shadows);
+    }
+#endif
     vec3 fogCol = (u_envMode > 0 && u_envFog) ? bg : u_bgColor;
     col = mix(col, fogCol, 1.0 - exp(-u_fog * t * 0.1));
   }
@@ -1472,6 +1574,9 @@ void main() {
     return;
   }
   col += u_lightColor * vol;
+#ifdef HAS_XLIGHTS
+  col += xvol;
+#endif
   col *= u_brightness;
   col *= 1.0 - smoothstep(0.4, 0.8, length(screenUv - 0.5)) * u_vignette;
   col = max(col, vec3(0.0));
@@ -1639,6 +1744,24 @@ void main() {
       }
     }
 
+#ifdef HAS_XLIGHTS
+    // Next-event estimation for Light 2 / 3 (same light size as the main light).
+    for (int li = 0; li < 2; li++) {
+      if ((li == 0 ? u_lOn.x : u_lOn.y) < 0.5) continue;
+      vec3 xp = xLightPos(li) + randomSphere() * u_ptLightSize;
+      vec3 xt = xp - p;
+      float xd = length(xt);
+      vec3 xl = xt / xd;
+      float xndl = dot(n, xl);
+      if (xndl <= 0.0) continue;
+      float xv = (li == 0 ? u_lShadow.x : u_lShadow.y) > 0.5 ? shadowVis(p + n * eN * 2.0, xl, xd, eN) : 1.0;
+      if (xv <= 0.0) continue;
+      float xs = 2.0 / max(rough * rough, 0.002);
+      vec3 xdW = albedo * (1.0 - metal) * (1.0 - fres);
+      vec3 xsW = fres * pow(max(dot(reflect(rd, n), xl), 0.0), xs) * (xs + 2.0) * 0.125;
+      acc += thr * (xdW + xsW) * xndl * toLin(xLightCol(li)) * u_ptSun * xv;
+    }
+#endif
     // Choose the next bounce lobe.
     float pSpec = clamp(dot(fres, vec3(0.3333)) * (1.0 - 0.5 * rough) + 0.5 * metal, 0.05, 0.95);
     vec3 nd;
@@ -1722,7 +1845,11 @@ void main() {
         lit = mix(1.0, clamp(0.25 + (d2 - d) / (u_volThick * 4.0), 0.05, 1.5), u_volLight);
       }
       float a = 1.0 - exp(-dens * dt);
+#ifdef HAS_XLIGHTS
+      L += T * a * c * u_volGlow * (lit * mix(vec3(1.0), u_lightColor, u_volLight) + (u_lOn.x * u_l2Col + u_lOn.y * u_l3Col) * 0.6);
+#else
       L += T * a * c * u_volGlow * lit * mix(vec3(1.0), u_lightColor, u_volLight);
+#endif
       T *= 1.0 - a;
     }
     t += dt;
@@ -1776,7 +1903,8 @@ vec3 foldStack(vec3 z) {
   // anything else), then the specialisation defines.
   const head = (opts.texLod ? '#extension GL_EXT_shader_texture_lod : enable\n#define HAS_TEX_LOD\n' : '')
     + `#define RENDER_MODE ${opts.mode | 0}\n#define SURF_VARIANT ${opts.variant | 0}\n`
-    + (opts.mat ? '#define HAS_MAT\n' : '');
+    + (opts.mat ? '#define HAS_MAT\n' : '')
+    + (opts.xl ? '#define HAS_XLIGHTS\n' : '');
   src = head + src;
   return src + FRAG_TAIL;
 }

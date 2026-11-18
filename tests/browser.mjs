@@ -72,10 +72,12 @@ void main() { float tr; float d = map(u_p, tr); gl_FragColor = pack(clamp(d / 16
     ['mb inversion mod1', { ...VARIANT_DEFAULTS[2], surfVariant: 2, vSInvOn: true, vSInvOffY: -0.4, vSInvG: 0.8, vSInvA: 2.1, vSInvStart: 1, vSInvStop: 3 }],
     ['mb inversion mod4', { ...VARIANT_DEFAULTS[5], surfVariant: 5, vSInvOn: true, vSInvOffX: 0.5, vSInvG: 1.2, vSInvAddZ: 0.3, vSInvA: 0.9 }],
     ['mb inversion klein', { ...VARIANT_DEFAULTS[8], surfVariant: 8, vSInvOn: true, vSInvOffZ: 0.6, vSInvG: 1.1, vSInvA: 1.5, vSInvStop: 2 }],
-    ['kyma loxodromic', { ...VARIANT_DEFAULTS[11], surfVariant: 11, vLox: 0.9, juliaMode: true, juliaCX: 0.3 }],
-    ['kyma torus', { ...VARIANT_DEFAULTS[12], surfVariant: 12, vTorusR: 0.7, vAxis: 1, influence: 1.3 }],
+    ['kyma loxodromic', { ...VARIANT_DEFAULTS[11], surfVariant: 11, vLoxX: 0.4, vLoxY: -0.3, vLoxZ: 0.9, juliaMode: true, juliaCX: 0.3 }],
+    ['kyma torus', { ...VARIANT_DEFAULTS[12], surfVariant: 12, vTorusOnX: true, vTorusOnY: true, vTorusRX: 0.5, vTorusRY: 0.7, vTorusRZ: 0.9, influence: 1.3 }],
     ['kyma ellipsoid', { ...VARIANT_DEFAULTS[13], surfVariant: 13, vEllX: 0.6, vEllY: 1.4, vEllZ: 2 }],
-    ['kyma vortex', { ...VARIANT_DEFAULTS[14], surfVariant: 14, vVortex: 0.7, vVortexDepth: 0.3 }],
+    ['kyma vortex xyz', { ...VARIANT_DEFAULTS[14], surfVariant: 14, vVortexX: 0.3, vVortexY: -0.3, vVortexZ: 0.5 }],
+    ['kyma vortex height', { ...VARIANT_DEFAULTS[14], surfVariant: 14, vVortexZ: 0.7, vVortexDZ: 0.3 }],
+    ['kyma vortex mixed', { ...VARIANT_DEFAULTS[14], surfVariant: 14, vVortexX: 0.3, vVortexZ: 0.7, vVortexDZ: 0.05 }],
     ['kyma gyroid', { ...VARIANT_DEFAULTS[15], surfVariant: 15, vGyroFreq: 2.5, vGyroL: 0.3 }],
     ['wave ripple', { waveType: 1, waveAmp: 0.2, waveFreq: 3, wavePhase: 0.5, waveStop: 3 }],
     ['wave shear mod1', { ...VARIANT_DEFAULTS[2], surfVariant: 2, waveType: 2, waveAmp: 0.3, waveFreq: 2.5, wavePhaseStep: 0.4, waveAxY: -0.5, waveStop: 4 }],
@@ -498,6 +500,43 @@ await page.screenshot({ path: `${OUT}/ui-full.png`, timeout: 600000 });
   ok(true, 'mutation grid: Esc closes and the viewer resumes');
 }
 
+// ── Extra lights (Light 2 / 3) ──
+{
+  const shootL = async over => {
+    await page.evaluate(async o => {
+      const { BIOMES } = await import('/engine/presets.js');
+      const s = window.__surf; s.state.resetAll();
+      s.state.setMany({ ...BIOMES.ifs_ring.v, dist: 6, maxSamples: 1, renderScale: 0.2, ...o });
+      s.renderer.resetLive();
+    }, over);
+    await page.waitForFunction(() => window.__surf.renderer.live.samples >= 1 && !window.__surf.renderer.isCompiling(), null, { timeout: 900000 });
+    return page.evaluate(() => {
+      const c = document.getElementById('view'), g = c.getContext('webgl'), buf = new Uint8Array(c.width * c.height * 4);
+      g.readPixels(0, 0, c.width, c.height, g.RGBA, g.UNSIGNED_BYTE, buf);
+      let r = 0, gg = 0, b = 0; for (let i = 0; i < buf.length; i += 4) { r += buf[i]; gg += buf[i + 1]; b += buf[i + 2]; }
+      const n = buf.length / 4;
+      return { r: r / n, g: gg / n, b: b / n, keys: [...window.__surf.renderer.programs.keys()] };
+    });
+  };
+  const red = { light2On: true, light2Color: '#ff2000', light2Int: 2.5, light2X: -3, light2Y: 3, light2Z: 4 };
+  for (const [name, base] of [['surface', {}], ['path traced', { renderMode: 1 }], ['volumetric', { renderMode: 2 }], ['with materials', { matOn: true, matAssign: 1 }]]) {
+    const a = await shootL(base), b2 = await shootL({ ...base, ...red });
+    ok(b2.r - a.r > 1.5 && b2.r - a.r > (b2.b - a.b) + 1 && b2.keys.some(k => k.endsWith('|xl')), `Light 2 (red) adds red light — ${name} (ΔR ${(b2.r - a.r).toFixed(1)}, ΔB ${(b2.b - a.b).toFixed(1)})`);
+  }
+  const noSh = await shootL({ ...red, shadows: true, light2Shadows: false }), sh = await shootL({ ...red, shadows: true, light2Shadows: true });
+  ok(noSh.r - sh.r > 0.3, `Light 2 shadows darken it (ΔR ${(noSh.r - sh.r).toFixed(2)})`);
+  const blue = await shootL({ light3On: true, light3Color: '#0040ff', light3Int: 2.5, light3Relative: true, light3X: 0, light3Y: 0, light3Z: 0 });
+  const plain = await shootL({});
+  ok(blue.b - plain.b > 1.5, `Light 3 as a camera headlight lights the view blue (ΔB ${(blue.b - plain.b).toFixed(1)})`);
+  await page.evaluate(() => { window.__surf.state.setMany({ light2On: false }); });
+  await page.waitForTimeout(1500);
+  const hidden = await page.evaluate(() => { const n = document.querySelector('[data-id="light2X"]'); return !!n && !!n.closest('.gate-hidden'); });
+  await page.evaluate(() => { window.__surf.state.setMany({ light2On: true }); });
+  await page.waitForTimeout(1500);
+  const shown = await page.evaluate(() => { const n = document.querySelector('[data-id="light2X"]'); return !!n && !n.closest('.gate-hidden'); });
+  ok(hidden && shown, 'Light 2 controls appear only when it is on');
+}
+
 // ── Kyma's own formulas (11–15): presets render, selector shows the right controls ──
 // Presets load through the dropdown; the formula selector applies the defaults.
 for (const key of ['kyma_lox', 'kyma_torus', 'kyma_ell', 'kyma_vortex', 'kyma_gyroid']) {
@@ -511,7 +550,7 @@ for (const key of ['kyma_lox', 'kyma_torus', 'kyma_ell', 'kyma_vortex', 'kyma_gy
   });
   ok(r.v >= 11 && r.lit > 0.05, `preset ${key}: formula ${r.v}, renders (${(r.lit * 100).toFixed(0)}% lit)`);
 }
-const OWN = { 11: ['vLox', 'vAxis'], 12: ['vTorusR', 'vAxis'], 13: ['vEllX', 'vEllY', 'vEllZ'], 14: ['vVortex', 'vVortexDepth', 'vAxis'], 15: ['vGyroFreq', 'vGyroL'] };
+const OWN = { 11: ['vLoxX', 'vLoxY', 'vLoxZ'], 12: ['vTorusOnX', 'vTorusOnY', 'vTorusOnZ', 'vTorusRX', 'vTorusRY', 'vTorusRZ'], 13: ['vEllX', 'vEllY', 'vEllZ'], 14: ['vVortexX', 'vVortexY', 'vVortexZ', 'vVortexDX', 'vVortexDY', 'vVortexDZ'], 15: ['vGyroFreq', 'vGyroL'] };
 const ALL = [...new Set(Object.values(OWN).flat())];
 for (const vi of [11, 12, 13, 14, 15, 1]) {
   await page.evaluate(vi => {
@@ -520,7 +559,12 @@ for (const vi of [11, 12, 13, 14, 15, 1]) {
   }, vi);
   await page.waitForTimeout(1500); // gates refresh on the next frame
   const r = await page.evaluate(([vi, ALL]) => {
-    const open = id => { const n = document.querySelector(`#dockLeft [data-id="${id}"]`) || [...document.querySelectorAll('#dockLeft select')].find(s => s.closest('.select-row')?.textContent.startsWith('Axis'))?.closest('.select-row'); return !!n && !n.closest('.gate-hidden'); };
+    // Sliders carry data-id; on/off switches are found by their label (Ring X …).
+    const open = id => {
+      const n = document.querySelector(`#dockLeft [data-id="${id}"]`)
+        || (id.startsWith('vTorusOn') ? [...document.querySelectorAll('#dockLeft label.toggle-container')].find(l => l.textContent.trim() === 'Ring ' + id.slice(-1)) : null);
+      return !!n && !n.closest('.gate-hidden');
+    };
     return { v: window.__surf.state.values.surfVariant, open: Object.fromEntries(ALL.map(id => [id, open(id)])), desc: document.body.textContent.includes(['', 'Kali / DarkBeam', '', '', '', '', '', '', '', '', '', 'Loxodromic Surf (Kyma):', 'Torus Surf (Kyma):', 'Ellipsoid Surf (Kyma):', 'Vortex Surf (Kyma):', 'Gyroid Surf (Kyma):'][vi]) };
   }, [vi, ALL]);
   const want = OWN[vi] || [];
