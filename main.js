@@ -19,6 +19,7 @@ import { BIOMES, evolve, rebirth, encodeDiscovery, decodeDiscovery, makeProject,
 import { wrapPi, clamp } from './engine/vec.js';
 import { Panel } from './ui/panel.js';
 import { MutationGrid } from './ui/mutation.js';
+import { initMobileTabs } from './ui/mobiletabs.js';
 import { proceduralTexture, imageTexture, TEX_KEYS } from './engine/textures.js';
 
 export const VERSION = '2.19.0';
@@ -599,6 +600,8 @@ const mutGrid = new MutationGrid({
 });
 gridBtn.addEventListener('click', () => { if (seq.playing) seq.stop?.(); mutGrid.open(); });
 $('footRight').append(copyBtn, row(loadBtn, resetAllBtn), row(saveProjBtn, openProjBtn));
+// Phones: panel sections become tabs under the viewer (after the footers exist).
+initMobileTabs({ app: $('app'), panel, stage: $('stage') });
 syncUndoButtons();
 
 evolveBtn.addEventListener('click', () => {
@@ -716,15 +719,7 @@ function setDock(side, open) {
   saveDocks();
 }
 const dockOpen = side => !app.classList.contains(side === 'left' ? 'no-left' : 'no-right');
-// Narrow screens: drawers float over the viewer, so a tap on the viewer closes them.
-const narrow = () => window.matchMedia('(max-width: 900px)').matches;
-$('stage').addEventListener('pointerdown', e => {
-  if (!narrow() || e.target.closest('.dock-tab')) return;
-  if (dockOpen('left') || dockOpen('right')) {
-    app.classList.add('no-left', 'no-right');
-    e.stopPropagation(); e.preventDefault();
-  }
-}, true);
+
 document.querySelectorAll('[data-dock]').forEach(b => b.addEventListener('click', () => setDock(b.dataset.dock, !dockOpen(b.dataset.dock))));
 function toggleUIHidden() {
   const hide = !document.body.classList.contains('ui-hidden');

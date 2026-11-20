@@ -26,7 +26,7 @@ The UI is docked in three columns:
 | Iteration (iterations, ray steps, detail) | | Quality & output |
 | *Evolve · Rebirth · Undo · Redo* | | *Discovery string · project · reset* |
 
-The left dock describes what the fractal *is*; the right dock controls how it is seen, animated and exported. `[` and `]` toggle the docks and `H` hides all UI. The viewer always takes the remaining width. Below 900 px the docks become slide-over drawers; tap the viewer to close an open drawer.
+The left dock describes what the fractal *is*; the right dock controls how it is seen, animated and exported. `[` and `]` toggle the docks and `H` hides all UI. The viewer always takes the remaining width. Below 900 px every section becomes a tab under the viewer (beside it in landscape), plus *Evolve · Undo* and *Save & Project* tabs for the dock footers.
 
 ## Surf variants
 
