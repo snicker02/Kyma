@@ -275,3 +275,61 @@ dialog .dlg-buttons { display: flex; gap: 10px; justify-content: flex-end; margi
 .mut-cell canvas { width: 100%; height: 100%; display: block; }
 .mut-tag { position: absolute; left: 6px; bottom: 6px; background: rgba(5,5,12,0.7); color: rgba(255,255,255,0.75); font-size: 0.55rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 8px; border-radius: 8px; pointer-events: none; }
 .mut-note { font-size: 0.58rem; color: var(--gray-500); text-align: center; }
+
+/* ── Phone tab layout (body.mtabs is set by ui/mobiletabs.js at ≤ 900 px) ── */
+.mtab-bar { display: none; }
+body.mtabs #app {
+  display: grid; height: 100dvh; width: 100%;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 52dvh auto minmax(0, 1fr);
+  grid-template-areas: "stage" "tabs" "dock";
+}
+body.mtabs .stage { grid-area: stage; }
+body.mtabs .mtab-bar {
+  grid-area: tabs; min-width: 0; display: flex; gap: 6px; overflow-x: auto; padding: 8px 10px;
+  background: var(--dock-bg); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+body.mtabs .mtab-bar::-webkit-scrollbar { display: none; }
+.mtab {
+  flex: none; min-height: 36px; padding: 0 14px; border-radius: 999px; white-space: nowrap;
+  background: rgba(255,255,255,0.05); border: 1px solid var(--line); color: var(--gray-400);
+  font-size: 0.62rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+}
+.mtab.active { background: rgba(99,102,241,0.25); border-color: var(--indigo); color: #fff; }
+
+body.mtabs .dock {
+  grid-area: dock; position: static; width: auto; height: auto; padding-bottom: 0;
+  box-shadow: none; border: 0; display: none !important;
+}
+body.mtabs .app.mt-left .dock-left,
+body.mtabs .app.mt-right .dock-right { display: flex !important; }
+body.mtabs .dock-tab, body.mtabs .dock-toggle, body.mtabs .dock-label,
+body.mtabs .dock-head, body.mtabs .dock-foot, body.mtabs .app-credit { display: none !important; }
+body.mtabs .dock-body { padding-bottom: env(safe-area-inset-bottom); }
+body.mtabs .app:not([data-mt="group"]) .dock-body { display: none; }
+
+/* Group tabs: just that group's controls, header hidden, always expanded. */
+body.mtabs .accordion-group { display: none; }
+body.mtabs .accordion-group.mt-active { display: block; }
+body.mtabs .accordion-group.mt-active > .group-header { display: none; }
+body.mtabs .accordion-group.mt-active > .group-content { display: flex; flex-direction: column; gap: 18px; }
+
+/* Action tabs: the dock footers, given the whole panel. */
+body.mtabs .app[data-mt="foot"] .dock-left .dock-foot { display: flex !important; overflow-y: auto; }
+body.mtabs .app[data-mt="save"] .dock-right .dock-head { display: flex !important; min-height: 0; justify-content: flex-start; border-bottom: 0; }
+body.mtabs .app[data-mt="save"] .dock-right .save-controls { align-items: flex-start; }
+body.mtabs .app[data-mt="save"] .dock-right .dock-foot { display: flex !important; border-top: 0; overflow-y: auto; }
+body.mtabs .app[data-mt="save"] .dock-right .app-credit { display: block !important; margin-top: auto; }
+
+/* Phones in landscape: viewer on the left, tabs and controls on the right. */
+@media (orientation: landscape) {
+  body.mtabs #app {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 330px);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "stage tabs" "stage dock";
+  }
+  body.mtabs .mtab-bar { border-left: 1px solid var(--line); border-top: 0; }
+  body.mtabs .dock { border-left: 1px solid var(--line); }
+}
+
