@@ -209,6 +209,29 @@ dialog .dlg-buttons { display: flex; gap: 10px; justify-content: flex-end; margi
 /* Hint sits beside the HUD; drop it when the viewer itself gets narrow. */
 @container stage (max-width: 820px) { .controls-hint { display: none; } }
 
+/* ── Touch & small screens ─────────────────────────────────────────────── */
+.app { height: 100dvh; width: 100%; }
+.touch-hint { display: none; top: 52px; left: 50%; transform: translateX(-50%); }
+@media (pointer: coarse) {
+  .controls-hint { display: none; }
+  .touch-hint { display: block; animation: kyma-hint-fade 1s ease 7s forwards; }
+  .dock-toggle { width: 40px; height: 40px; }
+  .dock-tab { width: 40px; height: 64px; }
+  .reset-btn { width: 30px; height: 30px; font-size: 14px; }
+  input[type=range] { height: 28px; margin: 2px 0 0; }
+  .action-btn.sm { padding: 10px; }
+  .group-header { min-height: 44px; }
+  select { min-height: 36px; }
+  input[type=checkbox] { width: 20px; height: 20px; }
+}
+@keyframes kyma-hint-fade { to { opacity: 0; visibility: hidden; } }
+@media (max-width: 900px) {
+  .dock { top: 0; bottom: 0; height: 100dvh; padding-bottom: env(safe-area-inset-bottom); }
+  .attribution-box { bottom: calc(10px + env(safe-area-inset-bottom)); right: 10px; font-size: 0.5rem; padding: 5px 10px; }
+  .hud { top: 10px; right: 10px; }
+  .touch-hint { top: 46px; max-width: calc(100% - 20px); white-space: normal; text-align: center; }
+}
+
 /* Narrow screens: docks become slide-over drawers above the full-width viewer. */
 @media (max-width: 900px) {
   .app, .app.no-left, .app.no-right, .app.no-left.no-right { grid-template-columns: minmax(0, 1fr); }

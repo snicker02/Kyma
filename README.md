@@ -1,4 +1,4 @@
-# Kyma v2.18.0
+# Kyma v2.19.0
 
 **Kyma** (κῦμα, Greek for "wave") is a progressive WebGL1 raymarcher for Kali's **Amazing Surf** fractal family. It includes all nine of Mandelbulber's surf formulas, path tracing, volumetric glow and environment lighting. It has no dependencies and no build step. It was formerly *Amazing Surf*; old project files, discovery strings (`SURF2:`) and saved panel layouts still load.
 
@@ -26,7 +26,7 @@ The UI is docked in three columns:
 | Iteration (iterations, ray steps, detail) | | Quality & output |
 | *Evolve · Rebirth · Undo · Redo* | | *Discovery string · project · reset* |
 
-The left dock describes what the fractal *is*; the right dock controls how it is seen, animated and exported. `[` and `]` toggle the docks and `H` hides all UI. The viewer always takes the remaining width. Below 900 px the docks become slide-over drawers.
+The left dock describes what the fractal *is*; the right dock controls how it is seen, animated and exported. `[` and `]` toggle the docks and `H` hides all UI. The viewer always takes the remaining width. Below 900 px the docks become slide-over drawers; tap the viewer to close an open drawer.
 
 ## Surf variants
 
@@ -554,6 +554,8 @@ The tests check that the GPU and CPU versions agree and that the fold is 1-Lipsc
 | K / Space / Esc | Add keyframe / play–stop / stop |
 | `[` / `]` / H | Toggle left dock / right dock / all UI |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
+
+On touch screens: one-finger drag orbits, pinch dollies, two-finger drag pans and double-tap autofocuses.
 
 ## Rendering & export
 

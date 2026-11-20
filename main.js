@@ -21,7 +21,7 @@ import { Panel } from './ui/panel.js';
 import { MutationGrid } from './ui/mutation.js';
 import { proceduralTexture, imageTexture, TEX_KEYS } from './engine/textures.js';
 
-export const VERSION = '2.18.0';
+export const VERSION = '2.19.0';
 
 const $ = id => document.getElementById(id);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
@@ -716,6 +716,15 @@ function setDock(side, open) {
   saveDocks();
 }
 const dockOpen = side => !app.classList.contains(side === 'left' ? 'no-left' : 'no-right');
+// Narrow screens: drawers float over the viewer, so a tap on the viewer closes them.
+const narrow = () => window.matchMedia('(max-width: 900px)').matches;
+$('stage').addEventListener('pointerdown', e => {
+  if (!narrow() || e.target.closest('.dock-tab')) return;
+  if (dockOpen('left') || dockOpen('right')) {
+    app.classList.add('no-left', 'no-right');
+    e.stopPropagation(); e.preventDefault();
+  }
+}, true);
 document.querySelectorAll('[data-dock]').forEach(b => b.addEventListener('click', () => setDock(b.dataset.dock, !dockOpen(b.dataset.dock))));
 function toggleUIHidden() {
   const hide = !document.body.classList.contains('ui-hidden');
@@ -995,16 +1004,21 @@ recBtn2.addEventListener('click', toggleRecord);
 
 // ── Pointer / wheel navigation ──────────────────────────────────────────────
 const pointers = new Map();
-let dragBtn = -1, pinchSpan = 0;
+let dragBtn = -1, pinchSpan = 0, pinchMid = null;
+// Touch: one finger orbits, two fingers pinch to dolly and drag to pan, double-tap focuses.
+let tapDown = null, lastTap = null, synthDblAt = -1e9;
+const midOf = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('pointerdown', e => {
   canvas.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   dragBtn = e.pointerType === 'mouse' ? e.button : 0;
+  tapDown = (e.pointerType === 'touch' && pointers.size === 1) ? { x: e.clientX, y: e.clientY, t: performance.now() } : null;
   if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     pinchSpan = Math.hypot(a.x - b.x, a.y - b.y);
+    pinchMid = midOf(a, b);
   }
   if (e.button === 1) e.preventDefault();
 });
@@ -1017,10 +1031,24 @@ canvas.addEventListener('pointermove', e => {
   if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     const span = Math.hypot(a.x - b.x, a.y - b.y);
-    if (pinchSpan > 0 && span > 0) state.set('dist', v.dist * pinchSpan / span);
-    pinchSpan = span;
+    const mid = midOf(a, b);
+    const upd = {};
+    if (pinchSpan > 0 && span > 0) upd.dist = v.dist * pinchSpan / span;
+    if (pinchMid) {
+      const mx = mid.x - pinchMid.x, my = mid.y - pinchMid.y;
+      if (mx || my) {
+        const cam = cameraBasis(v);
+        const k = v.dist * 0.0015 / v.lens;
+        upd.targetX = v.targetX - cam.right[0] * mx * k + cam.up[0] * my * k;
+        upd.targetY = v.targetY - cam.right[1] * mx * k + cam.up[1] * my * k;
+        upd.targetZ = v.targetZ - cam.right[2] * mx * k + cam.up[2] * my * k;
+      }
+    }
+    if (Object.keys(upd).length) state.setMany(upd);
+    pinchSpan = span; pinchMid = mid;
     return;
   }
+  if (pointers.size > 2) return;
   if (dragBtn === 0) {
     state.setMany({ rotX: wrapPi(v.rotX + dx * 0.005), rotY: clamp(v.rotY + dy * 0.005, -1.5707, 1.5707) });
   } else if (dragBtn === 2) {
@@ -1035,7 +1063,23 @@ canvas.addEventListener('pointermove', e => {
     });
   }
 });
-const endPointer = e => { pointers.delete(e.pointerId); if (pointers.size < 2) pinchSpan = 0; };
+const endPointer = e => {
+  const wasPinch = pointers.size >= 2;
+  pointers.delete(e.pointerId);
+  if (pointers.size < 2) { pinchSpan = 0; pinchMid = null; }
+  if (wasPinch) { tapDown = null; lastTap = null; return; }
+  if (e.type === 'pointerup' && e.pointerType === 'touch' && tapDown && pointers.size === 0) {
+    const now = performance.now();
+    if (Math.hypot(e.clientX - tapDown.x, e.clientY - tapDown.y) < 10 && now - tapDown.t < 300) {
+      if (lastTap && now - lastTap.t < 350 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30) {
+        lastTap = null; synthDblAt = now;
+        const r = canvas.getBoundingClientRect();
+        autofocusAt(e.clientX - r.left, e.clientY - r.top);
+      } else lastTap = { x: e.clientX, y: e.clientY, t: now };
+    } else lastTap = null;
+  }
+  tapDown = null;
+};
 canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
 canvas.addEventListener('wheel', e => {
@@ -1051,7 +1095,7 @@ function autofocusAt(px, py) {
   state.set('focalDist', t);
   toast(`Focus ${t.toFixed(3)}` + (v.dofStrength > 0 ? '' : ' · raise Depth Focus to see it'));
 }
-canvas.addEventListener('dblclick', e => autofocusAt(e.offsetX, e.offsetY));
+canvas.addEventListener('dblclick', e => { if (performance.now() - synthDblAt > 500) autofocusAt(e.offsetX, e.offsetY); });
 
 // ── Keyboard ────────────────────────────────────────────────────────────────
 const keys = {};
