@@ -1,4 +1,4 @@
-# Kyma v2.19.0
+# Kyma v2.20.0
 
 **Kyma** (κῦμα, Greek for "wave") is a progressive WebGL1 raymarcher for Kali's **Amazing Surf** fractal family. It includes all nine of Mandelbulber's surf formulas, path tracing, volumetric glow and environment lighting. It has no dependencies and no build step. It was formerly *Amazing Surf*; old project files, discovery strings (`SURF2:`) and saved panel layouts still load.
 
@@ -26,7 +26,7 @@ The UI is docked in three columns:
 | Iteration (iterations, ray steps, detail) | | Quality & output |
 | *Evolve · Rebirth · Undo · Redo* | | *Discovery string · project · reset* |
 
-The left dock describes what the fractal *is*; the right dock controls how it is seen, animated and exported. `[` and `]` toggle the docks and `H` hides all UI. The viewer always takes the remaining width. Below 900 px the docks become slide-over drawers.
+The left dock describes what the fractal *is*; the right dock controls how it is seen, animated and exported. `[` and `]` toggle the docks and `H` hides all UI. The viewer always takes the remaining width. Below 900 px every section becomes a tab under the viewer (beside it in landscape), plus *Evolve · Undo* and *Save & Project* tabs for the dock footers.
 
 ## Surf variants
 
@@ -232,7 +232,7 @@ extra-light program, Kyma says so and turns them off.
 - **Place Main Light / Light 2 / Light 3:** the light moves to the clicked surface point, lifted off it along the surface normal by **Light Distance from Surface** × the camera's distance to that point (0.3 = close rim/fill light, 1–2 = broad light). Placing Light 2 or 3 also switches it on. If the light **Follows Camera**, the position is stored as the matching camera-relative offset, so it stays put on screen as you orbit.
 - **Zoom ×2 into Point:** the orbit target jumps to the clicked point and the distance halves; the camera stays where it is, so the clicked detail moves to the centre. Below distance 0.05 Deep Zoom switches on by itself.
 
-While a light tool is active, small coloured markers show where each light sits on screen. Every placement can be undone with Ctrl+Z.
+On touch screens a tap is a click. While a light tool is active, small coloured markers show where each light sits on screen. Every placement can be undone with Ctrl+Z.
 
 ## Repetition / arrays
 
@@ -584,6 +584,8 @@ The tests check that the GPU and CPU versions agree and that the fold is 1-Lipsc
 | K / Space / Esc | Add keyframe / play–stop / stop |
 | `[` / `]` / H | Toggle left dock / right dock / all UI |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
+
+On touch screens: one-finger drag orbits, pinch dollies, two-finger drag pans and double-tap autofocuses. With a Click on View tool active, a tap is a click (place a light or zoom), and double-tap autofocus is off until Click on View is back on Orbit only.
 
 ## Rendering & export
 
