@@ -72,6 +72,10 @@ void main() { float tr; float d = map(u_p, tr); gl_FragColor = pack(clamp(d / 16
     ['mb inversion mod1', { ...VARIANT_DEFAULTS[2], surfVariant: 2, vSInvOn: true, vSInvOffY: -0.4, vSInvG: 0.8, vSInvA: 2.1, vSInvStart: 1, vSInvStop: 3 }],
     ['mb inversion mod4', { ...VARIANT_DEFAULTS[5], surfVariant: 5, vSInvOn: true, vSInvOffX: 0.5, vSInvG: 1.2, vSInvAddZ: 0.3, vSInvA: 0.9 }],
     ['mb inversion klein', { ...VARIANT_DEFAULTS[8], surfVariant: 8, vSInvOn: true, vSInvOffZ: 0.6, vSInvG: 1.1, vSInvA: 1.5, vSInvStop: 2 }],
+    ['rep grid', { repMode: 1, repCountX: 2, repCountY: 1, repCountZ: 2, repSpaceX: 4, repSpaceY: 3, repSpaceZ: 5 }],
+    ['rep grid varied ifs', { ...BIOMES.ifs_ring.v, repMode: 1, repCountX: 1, repCountY: 1, repCountZ: 1, repSpaceX: 30, repSpaceY: 30, repSpaceZ: 30, repRotVar: 60, repScaleVar: 0.3, repColVar: 1, repSeed: 3 }],
+    ['rep ring', { ...BIOMES.kyma_ell.v, repMode: 2, repRingN: 7, repRingR: 6, repRingAxis: 1 }],
+    ['rep ring fixed varied', { ...BIOMES.kyma_ell.v, repMode: 2, repRingN: 5, repRingR: 7, repRingAxis: 0, repRingRotate: false, repRotVar: 90, repScaleVar: 0.2 }],
     ['kyma loxodromic', { ...VARIANT_DEFAULTS[11], surfVariant: 11, vLoxX: 0.4, vLoxY: -0.3, vLoxZ: 0.9, juliaMode: true, juliaCX: 0.3 }],
     ['kyma torus', { ...VARIANT_DEFAULTS[12], surfVariant: 12, vTorusOnX: true, vTorusOnY: true, vTorusRX: 0.5, vTorusRY: 0.7, vTorusRZ: 0.9, influence: 1.3 }],
     ['kyma ellipsoid', { ...VARIANT_DEFAULTS[13], surfVariant: 13, vEllX: 0.6, vEllY: 1.4, vEllZ: 2 }],
@@ -93,7 +97,7 @@ void main() { float tr; float d = map(u_p, tr); gl_FragColor = pack(clamp(d / 16
     // rounding grows with depth (1 iteration agrees to ~0.03%; see README).
     // Compare it where 32-bit precision still holds.
     if ((v.surfVariant | 0) === 15) v.iterations = Math.min(v.iterations, 3);
-    const prog = compileProgram(gl, VERT, '#define RENDER_MODE 0\n#define SURF_VARIANT ' + (v.surfVariant | 0) + '\n' + fractalMapSource(v.foldType, v.foldType2 - 1, { variant: v.surfVariant, stack: [v.vStack1, v.vStack2, v.vStack3, v.vStack4, v.vStack5] }).replace(/^#define RENDER_MODE \d+\n#define SURF_VARIANT \d+\n/, '') + tail);
+    const prog = compileProgram(gl, VERT, '#define RENDER_MODE 0\n#define SURF_VARIANT ' + (v.surfVariant | 0) + '\n' + ((v.repMode | 0) > 0 ? '#define HAS_REP\n' : '') + fractalMapSource(v.foldType, v.foldType2 - 1, { variant: v.surfVariant, stack: [v.vStack1, v.vStack2, v.vStack3, v.vStack4, v.vStack5] }).replace(/^#define RENDER_MODE \d+\n#define SURF_VARIANT \d+\n/, '') + tail);
     gl.useProgram(prog.prog);
     setUniforms(gl, prog, sceneUniforms(v));
     const map = makeDE(v);
@@ -498,6 +502,84 @@ await page.screenshot({ path: `${OUT}/ui-full.png`, timeout: 600000 });
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => !window.__surf.mutGrid.isOpen && window.__surf.renderer.live.samples >= 1, null, { timeout: 600000 });
   ok(true, 'mutation grid: Esc closes and the viewer resumes');
+}
+
+// ── Click tools, repetition, deep zoom ──
+{
+  const px = async () => page.evaluate(() => {
+    const c = document.getElementById('view'), g = c.getContext('webgl'), w = c.width, h = c.height, buf = new Uint8Array(w * h * 4);
+    g.readPixels(0, 0, w, h, g.RGBA, g.UNSIGNED_BYTE, buf);
+    let e = 0, lit = 0;
+    for (let y = 0; y < h; y++) for (let x = 1; x < w; x++) { const i = (y * w + x) * 4; e += Math.abs(buf[i] - buf[i - 4]) + Math.abs(buf[i + 1] - buf[i - 3]); if (buf[i] + buf[i + 1] + buf[i + 2] > 30) lit++; }
+    return { edges: e / (w * h), lit: lit / (w * h), keys: [...window.__surf.renderer.programs.keys()] };
+  });
+  const scene = async o => {
+    await page.evaluate(async o => {
+      const { BIOMES } = await import('/engine/presets.js');
+      const s = window.__surf; s.state.resetAll();
+      s.state.setMany({ ...BIOMES.kyma_ell.v, maxSamples: 1, renderScale: 0.25, ...o });
+      s.renderer.resetLive();
+    }, o);
+    await page.waitForFunction(() => window.__surf.renderer.live.samples >= 1 && !window.__surf.renderer.isCompiling(), null, { timeout: 900000 });
+    return px();
+  };
+  const single = await scene({});
+  const grid = await scene({ repMode: 1, repCountX: 2, repCountY: 0, repCountZ: 2, repSpaceX: 9, repSpaceZ: 9, dist: 30 });
+  const ring = await scene({ repMode: 2, repRingN: 8, repRingR: 7, repRingAxis: 1, dist: 22, repRotVar: 30, repColVar: 1 });
+  ok(grid.keys.some(k => k.includes('|rep')) && grid.lit > 0.05 && ring.lit > 0.05 && Math.abs(grid.lit - single.lit) > 0.01, `repetition renders (grid ${(grid.lit * 100).toFixed(0)}%, ring ${(ring.lit * 100).toFixed(0)}% lit)`);
+
+  // Deep zoom: a very close view is sharper with Deep Zoom than without.
+  const close = { dist: 0.0005, targetX: 0, targetY: 0, targetZ: 0 };
+  await scene({}); // pick on the single, unrepeated object
+  const hit = await page.evaluate(async () => {
+    const { pickPixel } = await import('/engine/de.js');
+    const v = window.__surf.state.values;
+    const c = document.getElementById('view');
+    return pickPixel(v, c.clientWidth / 2, c.clientHeight / 2, c.clientWidth, c.clientHeight).p;
+  });
+  if (hit) { close.targetX = hit[0]; close.targetY = hit[1]; close.targetZ = hit[2]; }
+  const blurry = await scene({ ...close, deepZoom: false });
+  const sharp = await scene({ ...close, deepZoom: true });
+  ok(!!hit && sharp.keys.some(k => k.includes('|dz')) && sharp.edges > blurry.edges * 1.2, `Deep Zoom sharpens a ×8000 close-up (edge energy ${blurry.edges.toFixed(1)} → ${sharp.edges.toFixed(1)})`);
+  const hud = await page.evaluate(() => document.getElementById('hud').textContent);
+  await page.waitForTimeout(600);
+  const hud2 = await page.evaluate(() => document.getElementById('hud').textContent);
+  ok(/zoom ×/.test(hud2) && /precision OK|near float32|beyond float32/.test(hud2), `HUD shows zoom and precision ("${hud2.split('·').slice(-3).join('·').trim()}")`);
+
+  // Click tools: a click without a drag places Light 2 off the surface, or zooms in.
+  await scene({ clickMode: 2, lightPlace: 0.3 });
+  const box = await page.locator('#view').boundingBox();
+  const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy); await page.mouse.down(); await page.mouse.up();
+  await page.waitForTimeout(300);
+  const placed = await page.evaluate(async () => {
+    const { pickPixel } = await import('/engine/de.js');
+    const v = window.__surf.state.values, c = document.getElementById('view');
+    const h = pickPixel(v, c.clientWidth / 2, c.clientHeight / 2, c.clientWidth, c.clientHeight);
+    const L = [v.light2X, v.light2Y, v.light2Z];
+    const want = h.p.map((x, i) => x + h.n[i] * v.lightPlace * h.t);
+    const m = document.querySelectorAll('.light-marker')[1];
+    return { on: v.light2On, err: Math.hypot(...L.map((x, i) => x - want[i])), marker: m && m.style.display !== 'none' && document.querySelector('.light-markers').style.display !== 'none' };
+  });
+  ok(placed.on && placed.err < 1e-6 && placed.marker, `click places Light 2 ${0.3}×distance off the surface along its normal, marker shown (err ${placed.err.toExponential(1)})`);
+  // Dragging still orbits and places nothing.
+  const before = await page.evaluate(() => ({ x: window.__surf.state.values.light2X, r: window.__surf.state.values.rotX }));
+  await page.mouse.move(cx, cy); await page.mouse.down(); await page.mouse.move(cx + 60, cy, { steps: 4 }); await page.mouse.up();
+  const after = await page.evaluate(() => ({ x: window.__surf.state.values.light2X, r: window.__surf.state.values.rotX }));
+  ok(after.x === before.x && after.r !== before.r, 'a drag orbits and does not move the light');
+  // Zoom tool: each click halves the distance toward the clicked point; Deep Zoom switches on below 0.05.
+  await page.evaluate(() => window.__surf.state.setMany({ clickMode: 4, deepZoom: false }));
+  const d0 = await page.evaluate(() => window.__surf.state.values.dist);
+  let zoomed = 0;
+  for (let k = 0; k < 8; k++) {
+    await page.mouse.move(cx, cy); await page.mouse.down(); await page.mouse.up();
+    await page.waitForTimeout(150);
+    zoomed++;
+    if (await page.evaluate(() => window.__surf.state.values.dist < 0.03)) break;
+  }
+  const z = await page.evaluate(() => ({ d: window.__surf.state.values.dist, dz: window.__surf.state.values.deepZoom }));
+  ok(z.d < d0 / 2 ** (zoomed - 1) && z.dz === (z.d < 0.05), `zoom tool: ${zoomed} clicks took the view from ${d0.toPrecision(3)} to ${z.d.toPrecision(3)}, Deep Zoom ${z.dz ? 'on' : 'off'}`);
+  await page.evaluate(() => window.__surf.state.setMany({ clickMode: 0 }));
 }
 
 // ── Extra lights (Light 2 / 3) ──

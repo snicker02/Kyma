@@ -205,6 +205,10 @@ uniform vec3  u_camRight;
 uniform vec3  u_camUp;
 uniform vec3  u_camForward;
 uniform float u_lens;
+#ifdef DEEP_ZOOM
+// Deep zoom: world size of one pixel per unit of ray distance.
+#define DZ_PIX (1.0 / (u_lens * min(u_resolution.x, u_resolution.y)))
+#endif
 uniform float u_dof;
 uniform float u_focalDist;
 
@@ -880,9 +884,77 @@ float mapLocal(vec3 p, out float trap) {
 uniform mat3  u_objInv;   // local-from-world rotation (transpose of the object's)
 uniform vec3  u_objPos;
 uniform float u_objScale;
+#ifdef HAS_REP
+// ═══ Repetition / arrays ════════════════════════════════════════════════════
+// Copies of the fractal in a finite grid or a ring. Each copy gets the object
+// transform plus optional per-copy rotation, scale and colour shift. The
+// distance is capped at the distance to the cell wall (+ a small pad), so a
+// ray that crosses into a neighbouring cell is re-evaluated against that
+// cell's copy: correct as long as each copy stays inside its own cell.
+uniform int   u_repMode;      // 1 grid, 2 ring
+uniform vec3  u_repCount;     // grid: copies on each side of the centre (n → 2n + 1)
+uniform vec3  u_repSpace;     // grid spacing
+uniform float u_repRingN;     // ring: number of copies
+uniform float u_repRingR;     // ring: radius
+uniform int   u_repRingAxis;  // 0 X, 1 Y, 2 Z
+uniform bool  u_repRingRotate;
+uniform vec4  u_repVar;       // max rotation (rad), scale ± fraction, colour shift, seed
+uniform float u_repPad;
+
+vec3 repHash(vec3 c) {
+  vec3 q = fract(c * vec3(0.1031, 0.1030, 0.0973) + u_repVar.w * 0.6180339);
+  q += dot(q, q.yxz + 3.33);
+  return fract((q.xxy + q.yxx) * q.zyx);
+}
+vec3 repToAxis(vec3 z) { return u_repRingAxis == 0 ? z.yzx : (u_repRingAxis == 1 ? z.zxy : z); }
+vec3 repFromAxis(vec3 w) { return u_repRingAxis == 0 ? w.zxy : (u_repRingAxis == 1 ? w.yzx : w); }
+
+float map(vec3 p, out float trap) {
+  vec3 q = p, cid = vec3(0.0);
+  float bound = 1e10;
+  if (u_repMode == 1) {
+    vec3 sp = max(u_repSpace, vec3(1e-4));
+    vec3 idx = clamp(floor(p / sp + 0.5), -u_repCount, u_repCount);
+    q = p - idx * sp;
+    cid = idx;
+    vec3 up = (idx + 0.5) * sp - p, lo = p - (idx - 0.5) * sp;
+    if (idx.x < u_repCount.x) bound = min(bound, up.x);
+    if (idx.x > -u_repCount.x) bound = min(bound, lo.x);
+    if (idx.y < u_repCount.y) bound = min(bound, up.y);
+    if (idx.y > -u_repCount.y) bound = min(bound, lo.y);
+    if (idx.z < u_repCount.z) bound = min(bound, up.z);
+    if (idx.z > -u_repCount.z) bound = min(bound, lo.z);
+  } else if (u_repMode == 2) {
+    vec3 w = repToAxis(p);
+    float sec = 6.2831853 / u_repRingN;
+    float a = atan(w.y, w.x);
+    float k = floor(a / sec + 0.5);
+    float da = a - k * sec;
+    float rho = length(w.xy);
+    vec3 lw;
+    if (u_repRingRotate) lw = vec3(rho * cos(da) - u_repRingR, rho * sin(da), w.z);
+    else lw = vec3(w.xy - u_repRingR * vec2(cos(k * sec), sin(k * sec)), w.z);
+    q = repFromAxis(lw);
+    cid = vec3(mod(k, u_repRingN), 0.0, 0.0);
+    bound = rho * sin(max(0.5 * sec - abs(da), 0.0));
+  }
+  float sc = 1.0;
+  vec3 h = repHash(cid);
+  if (u_repVar.x > 0.0) {
+    vec3 ax = normalize(repHash(cid + 17.0) * 2.0 - 1.0 + 1e-4);
+    float an = (h.x * 2.0 - 1.0) * u_repVar.x, c = cos(an), sn = sin(an);
+    q = q * c + cross(ax, q) * sn + ax * dot(ax, q) * (1.0 - c);
+  }
+  if (u_repVar.y > 0.0) sc = 1.0 + (h.y * 2.0 - 1.0) * u_repVar.y;
+  float d = mapLocal(u_objInv * (q / sc - u_objPos) / u_objScale, trap) * u_objScale * sc;
+  trap += h.z * u_repVar.z;
+  return min(d, bound + u_repPad);
+}
+#else
 float map(vec3 p, out float trap) {
   return mapLocal(u_objInv * (p - u_objPos) / u_objScale, trap) * u_objScale;
 }
+#endif
 
 // Tetrahedral normal: 4 DE evaluations instead of 6.
 vec3 getNormal(vec3 p, float e) {
@@ -1046,7 +1118,11 @@ bool marchFractal(vec3 ro, vec3 rd, out float t, out float trap) {
   for (int i = 0; i < 1024; i++) {
     if (i >= u_maxSteps) return false;
     float d = map(ro + rd * t, trap);
+#ifdef DEEP_ZOOM
+    if (d < min(eps0 * (1.0 + t * 0.1), t * DZ_PIX * 0.5 / u_detail)) return true;
+#else
     if (d < eps0 * (1.0 + t * 0.1)) return true;
+#endif
     t += marchStep(d);
     if (t > u_maxDist) return false;
   }
@@ -1133,14 +1209,22 @@ vec3 extraLights(vec3 p, vec3 n, vec3 rd, float eN, vec3 diffAlb, vec3 specCol, 
 vec3 shadeGround(vec3 p, vec3 rd, float t, vec3 bg) {
   vec3 n = groundNormal(p, t);
   vec3 alb = groundAlbedo(p, t);
+#ifdef DEEP_ZOOM
+  float eN = min(0.0004 * (1.0 + t * 0.1), t * DZ_PIX * 0.7) / u_detail;
+#else
   float eN = 0.0004 * (1.0 + t * 0.1) / u_detail;
+#endif
   vec3 toL = u_lightPos - p;
   float lightDist = length(toL);
   vec3 L = toL / lightDist;
   float diff = max(dot(n, L), 0.0);
   float sh = 1.0;
   if (u_groundShadows && diff > 0.0) sh = softShadow(p + n * eN * 4.0, L, min(lightDist, 30.0), u_shadowSoft, eN);
+#ifdef DEEP_ZOOM
+  float ao = u_aoStrength > 0.0 ? mix(1.0, surfaceAO(p, n, min(1.0 + t * 0.05, t * 0.3)), u_aoStrength) : 1.0;
+#else
   float ao = u_aoStrength > 0.0 ? mix(1.0, surfaceAO(p, n, 1.0 + t * 0.05), u_aoStrength) : 1.0;
+#endif
   vec3 col = alb * (diff * sh + u_ambient) * ao;
   if (u_envMode > 0) col += alb * envDir(n, 6.0) * u_envLight * ao;
 #ifdef HAS_XLIGHTS
@@ -1158,7 +1242,11 @@ vec3 shadeGround(vec3 p, vec3 rd, float t, vec3 bg) {
     float tr, trap;
     if (marchFractal(p + n * eN * 6.0, R, tr, trap)) {
       vec3 q = p + n * eN * 6.0 + R * tr;
+#ifdef DEEP_ZOOM
+      vec3 fn = getNormal(q, min(0.0004 * (1.0 + tr * 0.1), tr * DZ_PIX * 0.7) / u_detail);
+#else
       vec3 fn = getNormal(q, 0.0004 * (1.0 + tr * 0.1) / u_detail);
+#endif
       vec3 fl = normalize(u_lightPos - q);
       rc = palette(trap * 0.4 + u_colorShift * 10.0) * (max(dot(fn, fl), 0.0) + u_ambient)
          + pow(max(dot(reflect(R, fn), fl), 0.0), 32.0) * 0.4 * u_lightColor;
@@ -1490,7 +1578,11 @@ void main() {
       xvol += (u_lOn.x * u_l2Col / (1.0 + dot(d2, d2) * 2.0) + u_lOn.y * u_l3Col / (1.0 + dot(d3, d3) * 2.0)) * min(d, 0.08) * u_volumetric;
     }
 #endif
+#ifdef DEEP_ZOOM
+    if (d < min(eps0 * (1.0 + t * 0.1), t * DZ_PIX * 0.5 / u_detail)) { hit = true; exhausted = false; break; }
+#else
     if (d < eps0 * (1.0 + t * 0.1)) { hit = true; exhausted = false; break; }
+#endif
     t += marchStep(d);
     steps = float(i);
     if (t > u_maxDist) { exhausted = false; break; }
@@ -1516,7 +1608,11 @@ void main() {
     col = mix(col, fogColG, 1.0 - exp(-u_fog * t * 0.1));
   } else if (hit) {
     vec3 p = ro + rd * t;
+#ifdef DEEP_ZOOM
+    float eN = min(0.0004 * (1.0 + t * 0.1), t * DZ_PIX * 0.7) / u_detail;
+#else
     float eN = 0.0004 * (1.0 + t * 0.1) / u_detail;
+#endif
     vec3 n = getNormal(p, eN);
 #ifdef HAS_MAT
     Mat mt = evalSurface(p, n, t, eN, trap, palette(trap * 0.4 + u_colorShift * 10.0)); // bumps n
@@ -1528,7 +1624,11 @@ void main() {
     float spec = pow(max(dot(reflect(rd, n), lightDir), 0.0), 32.0);
 
     float ao = mix(1.0, 1.0 - steps / float(u_maxSteps), u_stepAO);
+#ifdef DEEP_ZOOM
+    if (u_aoStrength > 0.0) ao *= mix(1.0, surfaceAO(p, n, min(1.0 + t * 0.05, t * 0.3)), u_aoStrength);
+#else
     if (u_aoStrength > 0.0) ao *= mix(1.0, surfaceAO(p, n, 1.0 + t * 0.05), u_aoStrength);
+#endif
     ao = max(ao, 0.0);
 
     float sh = 1.0;
@@ -1628,7 +1728,11 @@ bool traceHit(vec3 ro, vec3 rd, out float t, out float trap) {
     float dg = groundDist(p);
     g_onGround = dg < d;
     d = min(d, dg);
+#ifdef DEEP_ZOOM
+    if (d < min(eps0 * (1.0 + t * 0.1), t * DZ_PIX * 0.5 / u_detail)) return true;
+#else
     if (d < eps0 * (1.0 + t * 0.1)) return true;
+#endif
     t += marchStep(d);
     if (t > u_maxDist) return false;
   }
@@ -1672,7 +1776,11 @@ void main() {
     }
     if (b == 0) { tPrimary = t; primaryGround = g_onGround; }
     vec3 p = ro + rd * t;
+#ifdef DEEP_ZOOM
+    float eN = min(0.0004 * (1.0 + t * 0.1), t * DZ_PIX * 0.7) / u_detail;
+#else
     float eN = 0.0004 * (1.0 + t * 0.1) / u_detail;
+#endif
     // Material: the fractal uses the Path Tracing sliders; the ground its own.
     vec3 n, albedo;
     float metal = u_ptMetal, rough = u_ptRough;
@@ -1904,7 +2012,9 @@ vec3 foldStack(vec3 z) {
   const head = (opts.texLod ? '#extension GL_EXT_shader_texture_lod : enable\n#define HAS_TEX_LOD\n' : '')
     + `#define RENDER_MODE ${opts.mode | 0}\n#define SURF_VARIANT ${opts.variant | 0}\n`
     + (opts.mat ? '#define HAS_MAT\n' : '')
-    + (opts.xl ? '#define HAS_XLIGHTS\n' : '');
+    + (opts.xl ? '#define HAS_XLIGHTS\n' : '')
+    + (opts.rep ? '#define HAS_REP\n' : '')
+    + (opts.dz ? '#define DEEP_ZOOM\n' : '');
   src = head + src;
   return src + FRAG_TAIL;
 }

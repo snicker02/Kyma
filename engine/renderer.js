@@ -12,6 +12,7 @@
 // ready instead of the page hitching.
 
 import { VERT, DISPLAY_FRAG, fractalFrag } from './glsl.js';
+import { effectiveIterations } from './params.js';
 import { compileProgram, finishProgram, setUniforms, detectAccumFormat, createTarget, deleteTarget } from './gl.js';
 import { cameraBasis, lightWorldPos, extraLightPos } from './camera.js';
 import { gradientSpec, gradientKey, gradientScale, buildGradientLUT, LUT_SIZE } from './gradients.js';
@@ -167,7 +168,7 @@ export function sceneUniforms(v, scaleOverride) {
     u_spinOn: v.spinX !== 0 || v.spinY !== 0 || v.spinZ !== 0,
     u_rotStart: v.rotStart,
     u_invDELimit: v.invDELimit,
-    u_iterations: v.iterations,
+    u_iterations: effectiveIterations(v),
     u_hybridPeriod: v.hybridPeriod,
     u_polarN: v.polarN,
     u_invEnabled: v.invEnabled,
@@ -219,6 +220,18 @@ export function sceneUniforms(v, scaleOverride) {
     u_lOn: [v.light2On ? 1 : 0, v.light3On ? 1 : 0],
     u_lShadow: [(v.light2Shadows ?? true) ? 1 : 0, (v.light3Shadows ?? true) ? 1 : 0],
     __xl: !!(v.light2On || v.light3On),
+    // Repetition / arrays (HAS_REP) and Deep Zoom (DEEP_ZOOM) are compiled in only when on.
+    __rep: (v.repMode | 0) > 0,
+    __dz: !!v.deepZoom,
+    u_repMode: v.repMode | 0,
+    u_repCount: [v.repCountX ?? 2, v.repCountY ?? 0, v.repCountZ ?? 2].map(n => Math.max(0, Math.round(n))),
+    u_repSpace: [v.repSpaceX ?? 5, v.repSpaceY ?? 5, v.repSpaceZ ?? 5],
+    u_repRingN: Math.max(2, Math.round(v.repRingN ?? 8)),
+    u_repRingR: v.repRingR ?? 6,
+    u_repRingAxis: v.repRingAxis ?? 1,
+    u_repRingRotate: v.repRingRotate ?? true,
+    u_repVar: [(v.repRotVar || 0) * Math.PI / 180, v.repScaleVar || 0, v.repColVar || 0, v.repSeed || 0],
+    u_repPad: 1e-3 * Math.max(v.repMode === 2 ? (v.repRingR ?? 6) : Math.max(v.repSpaceX ?? 5, v.repSpaceY ?? 5, v.repSpaceZ ?? 5), 0.01),
     u_bgColor: hexToRgb(v.bgColor),
     u_ambient: v.ambient,
     u_stepAO: v.stepAO,
@@ -258,11 +271,11 @@ export function specOf(scene, modeOverride) {
   let b = classic ? scene.__foldB | 0 : -1;
   if (b === a) b = -1;
   const stack = STACK_VARIANTS.has(variant) ? (scene.__stack || [1, 0, 0, 0, 0]).map(x => x | 0) : [1, 0, 0, 0, 0];
-  return { a, b, variant, stack, mode: (modeOverride ?? scene.__mode) | 0, mat: !!scene.__mat, xl: !!scene.__xl };
+  return { a, b, variant, stack, mode: (modeOverride ?? scene.__mode) | 0, mat: !!scene.__mat, xl: !!scene.__xl, rep: !!scene.__rep, dz: !!scene.__dz };
 }
 
 export function specKey(sp) {
-  return `v${sp.variant}|${sp.a}|${sp.b}|${sp.stack.join('')}|m${sp.mode}${sp.mat ? '|mat' : ''}${sp.xl ? '|xl' : ''}`;
+  return `v${sp.variant}|${sp.a}|${sp.b}|${sp.stack.join('')}|m${sp.mode}${sp.mat ? '|mat' : ''}${sp.xl ? '|xl' : ''}${sp.rep ? '|rep' : ''}${sp.dz ? '|dz' : ''}`;
 }
 
 // Back-compat helper (classic engine).
@@ -398,7 +411,7 @@ export class Renderer {
 
   _startCompile(sp) {
     const gl = this.gl;
-    const opts = { texLod: this.texLod, mode: sp.mode, variant: sp.variant, stack: sp.stack, mat: sp.mat, xl: sp.xl };
+    const opts = { texLod: this.texLod, mode: sp.mode, variant: sp.variant, stack: sp.stack, mat: sp.mat, xl: sp.xl, rep: sp.rep, dz: sp.dz };
     const a = sp.a, b = sp.b;
     if (!this.parallel) {
       try { return { ready: true, prog: compileProgram(gl, VERT, fractalFrag(a, b, opts)) }; }

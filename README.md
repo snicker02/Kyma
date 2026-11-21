@@ -1,4 +1,4 @@
-# Kyma v2.19.0
+# Kyma v2.20.0
 
 **Kyma** (κῦμα, Greek for "wave") is a progressive WebGL1 raymarcher for Kali's **Amazing Surf** fractal family. It includes all nine of Mandelbulber's surf formulas, path tracing, volumetric glow and environment lighting. It has no dependencies and no build step. It was formerly *Amazing Surf*; old project files, discovery strings (`SURF2:`) and saved panel layouts still load.
 
@@ -224,6 +224,35 @@ rim and fill lights.
 The extra-light code is compiled in only when Light 2 or Light 3 is on, so
 scenes without them use exactly the classic shader. If a GPU can't build the
 extra-light program, Kyma says so and turns them off.
+
+## Click tools
+
+**View › Click Tools › Click on View** sets what a plain click on the image does (a drag still orbits; a click is a press and release that moves 4 px or less):
+
+- **Place Main Light / Light 2 / Light 3:** the light moves to the clicked surface point, lifted off it along the surface normal by **Light Distance from Surface** × the camera's distance to that point (0.3 = close rim/fill light, 1–2 = broad light). Placing Light 2 or 3 also switches it on. If the light **Follows Camera**, the position is stored as the matching camera-relative offset, so it stays put on screen as you orbit.
+- **Zoom ×2 into Point:** the orbit target jumps to the clicked point and the distance halves; the camera stays where it is, so the clicked detail moves to the centre. Below distance 0.05 Deep Zoom switches on by itself.
+
+On touch screens a tap is a click. While a light tool is active, small coloured markers show where each light sits on screen. Every placement can be undone with Ctrl+Z.
+
+## Repetition / arrays
+
+The **Repetition / Arrays** panel (right dock) repeats the object:
+
+- **Grid:** copies at ± **NX / NY / NZ** cells (0 = one layer, 2 = 5 copies along that axis) with **SX / SY / SZ** spacing between centres.
+- **Ring:** **Copies** around a circle of **Radius** about **Ring Axis**. **Copies Turn with the Ring** rotates each copy to face outward; off keeps them all facing the same way.
+- **Per-copy variation:** **Rotation Variation** (random axis, up to ± that many degrees), **Scale Variation**, **Colour Variation** (offsets the gradient per copy) and **Variation Seed**. Mutation and Evolve also vary these.
+
+Each copy is its own exact fractal, cut at the walls of its cell (grid) or sector (ring). Amazing Surf itself is an endless sheet in X/Y, so its copies overlap and you'll see the cut faces. Repetition looks best with compact shapes (most Kyma Originals, IFS, Klein and scenes with a small Fold Limit), or with the spacing set larger than the object. The repeated program is compiled only when repetition is on.
+
+## Deep zoom
+
+With **View › Deep Zoom (pixel-sharp close-ups)** on, the surface threshold, normals and ambient occlusion follow the pixel size instead of fixed world sizes, so detail stays sharp to about ×10⁵. **Add Iterations as You Zoom** adds about one formula iteration for every halving of the distance below 5 (×1 = one per halving, capped at 250), because finer detail needs more iterations to appear. The HUD shows the zoom, the iteration count actually used and a precision tag:
+
+- **precision OK:** float32 resolves the view.
+- **near float32 limit:** the pixel size is approaching the float32 spacing at that position, so expect some grain.
+- **beyond float32: blocky:** WebGL1 has no double precision. Past roughly distance 1e-5–1e-6 (lower near the origin, higher far from it) the image breaks into blocks. Going deeper would need emulated double precision through every iteration, which would make the shader many times slower.
+
+**Click on View › Zoom ×2 into Point** is the quickest way to dive. Kyma offers Deep Zoom the first time you get closer than 0.02.
 
 ## Kyma's own formulas (variants 11–15)
 
@@ -551,11 +580,12 @@ The tests check that the GPU and CPU versions agree and that the fold is 1-Lipsc
 | Middle drag | Pan |
 | WASD, Q/E, Shift | Fly the orbit target (Shift = sprint) |
 | Double-click / F | Autofocus depth of field under the cursor / centre |
+| Click (no drag) | View › Click on View: place a light or zoom ×2 into the point |
 | K / Space / Esc | Add keyframe / play–stop / stop |
 | `[` / `]` / H | Toggle left dock / right dock / all UI |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
 
-On touch screens: one-finger drag orbits, pinch dollies, two-finger drag pans and double-tap autofocuses.
+On touch screens: one-finger drag orbits, pinch dollies, two-finger drag pans and double-tap autofocuses. With a Click on View tool active, a tap is a click (place a light or zoom), and double-tap autofocus is off until Click on View is back on Orbit only.
 
 ## Rendering & export
 
