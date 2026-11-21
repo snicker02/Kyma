@@ -4,15 +4,15 @@ import { State } from './engine/state.js';
 import { Renderer, sceneUniforms } from './engine/renderer.js';
 import { Sequencer, MODE } from './engine/sequencer.js';
 import { cameraBasis } from './engine/camera.js';
-import { probePixel, makeDE, marchInfo, suggestVolumeShell } from './engine/de.js';
+import { probePixel, pickPixel, makeDE, marchInfo, suggestVolumeShell } from './engine/de.js';
 import { ENV_PRESETS, proceduralEnv, imageEnv, looksLikePanorama } from './engine/environment.js';
-import { pixelRay } from './engine/camera.js';
+import { pixelRay, lightWorldPos, extraLightPos } from './engine/camera.js';
 import { renderImage, canvasToPngBlob, downloadBlob, stamp, Cancelled } from './engine/export.js';
 import { ZipWriter } from './engine/zip.js';
 import { gradientSpec, drawGradientPreview, GRADIENTS } from './engine/gradients.js';
 const GRADIENT_COUNT = GRADIENTS.length;
 import { VideoWriter, pickEncoder, canEncodeVideo, videoBitrate } from './engine/video.js';
-import { FOLD_NAMES, SURF_VARIANTS as SURF_VARIANT_NAMES, defaults as paramDefaults, PARAMS } from './engine/params.js';
+import { FOLD_NAMES, SURF_VARIANTS as SURF_VARIANT_NAMES, defaults as paramDefaults, PARAMS , effectiveIterations } from './engine/params.js';
 const PARAM_DEF = paramDefaults();
 import { VARIANT_DEFAULTS, VARIANT_DESC } from './engine/presets.js';
 import { BIOMES, evolve, rebirth, encodeDiscovery, decodeDiscovery, makeProject, parseProject } from './engine/presets.js';
@@ -21,7 +21,7 @@ import { Panel } from './ui/panel.js';
 import { MutationGrid } from './ui/mutation.js';
 import { proceduralTexture, imageTexture, TEX_KEYS } from './engine/textures.js';
 
-export const VERSION = '2.18.0';
+export const VERSION = '2.19.0';
 
 const $ = id => document.getElementById(id);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
@@ -1053,6 +1053,90 @@ function autofocusAt(px, py) {
 }
 canvas.addEventListener('dblclick', e => autofocusAt(e.offsetX, e.offsetY));
 
+// ── Click tools (View & Navigation › Click Tools) ───────────────────────────
+// A click without a drag runs the selected tool: put a light just off the
+// surface you clicked, or zoom ×2 into that point. Drags still orbit.
+const LIGHT_KEYS = { 1: ['lightX', 'lightY', 'lightZ', 'lightRelative', null, 'Main light'], 2: ['light2X', 'light2Y', 'light2Z', 'light2Relative', 'light2On', 'Light 2'], 3: ['light3X', 'light3Y', 'light3Z', 'light3Relative', 'light3On', 'Light 3'] };
+let clickDown = null;
+canvas.addEventListener('pointerdown', e => { clickDown = e.button === 0 ? { x: e.clientX, y: e.clientY } : null; }, true);
+canvas.addEventListener('pointerup', e => {
+  const d = clickDown; clickDown = null;
+  if (!d || Math.hypot(e.clientX - d.x, e.clientY - d.y) > 4) return;
+  const mode = state.values.clickMode | 0;
+  if (mode) clickTool(mode, e.offsetX, e.offsetY);
+});
+
+function clickTool(mode, px, py) {
+  const v = state.values;
+  const hit = pickPixel(v, px, py, canvas.clientWidth, canvas.clientHeight);
+  if (!(hit.t >= 0)) { toast('No surface there'); return; }
+  if (mode >= 1 && mode <= 3) {
+    const [kx, ky, kz, kRel, kOn, name] = LIGHT_KEYS[mode];
+    const off = (v.lightPlace ?? 0.3) * hit.t;
+    let P = [hit.p[0] + hit.n[0] * off, hit.p[1] + hit.n[1] * off, hit.p[2] + hit.n[2] * off];
+    if (v[kRel]) { // stored as a camera-space offset (+X right, +Y up, +Z back)
+      const c = hit.cam, q = [P[0] - c.eye[0], P[1] - c.eye[1], P[2] - c.eye[2]];
+      const dt = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+      P = [dt(q, c.right), dt(q, c.up), -dt(q, c.forward)];
+    }
+    pushHistory();
+    state.setMany({ [kx]: P[0], [ky]: P[1], [kz]: P[2], ...(kOn ? { [kOn]: true } : {}) });
+    toast(`${name} placed ${off.toPrecision(2)} off the surface`);
+    flashMarkers();
+  } else if (mode === 4) {
+    // Keep the eye, look at the clicked point, halve the distance to it.
+    const e0 = hit.eye, t = hit.p;
+    const o = [e0[0] - t[0], e0[1] - t[1], e0[2] - t[2]];
+    const d0 = Math.hypot(...o), d1 = d0 / 2;
+    const a = Math.asin(Math.max(-1, Math.min(1, -o[1] / d0))), b = Math.atan2(o[0], o[2]);
+    pushHistory();
+    state.setMany({ targetX: t[0], targetY: t[1], targetZ: t[2], rotY: a, rotX: b, dist: d1, ...(d1 < 0.05 && !v.deepZoom ? { deepZoom: true } : {}) });
+    toast(`Zoom ×${(5 / d1).toPrecision(3)}` + (d1 < 0.05 && !v.deepZoom ? ' · Deep Zoom on' : ''));
+  }
+}
+
+// Light markers: where each light is, shown while a light tool is selected
+// (and briefly after placing one).
+const markerLayer = el('div', 'light-markers');
+$('stage').append(markerLayer);
+const markers = [1, 2, 3].map(n => { const m = el('div', 'light-marker', n === 1 ? 'L' : 'L' + n); markerLayer.append(m); return m; });
+let markerFlashUntil = 0;
+function flashMarkers() { markerFlashUntil = performance.now() + 2500; }
+function updateMarkers() {
+  const v = state.values, mode = v.clickMode | 0;
+  const show = (mode >= 1 && mode <= 3) || performance.now() < markerFlashUntil;
+  markerLayer.style.display = show ? '' : 'none';
+  if (!show) return;
+  const cam = cameraBasis(v), w = canvas.clientWidth, h = canvas.clientHeight, s0 = Math.min(w, h);
+  const pos = [lightWorldPos(v, cam), extraLightPos(v, cam, 2), extraLightPos(v, cam, 3)];
+  const on = [true, !!v.light2On, !!v.light3On];
+  const cols = [v.lightColor, v.light2Color, v.light3Color];
+  markers.forEach((m, i) => {
+    const q = [pos[i][0] - cam.eye[0], pos[i][1] - cam.eye[1], pos[i][2] - cam.eye[2]];
+    const x = q[0] * cam.right[0] + q[1] * cam.right[1] + q[2] * cam.right[2];
+    const y = q[0] * cam.up[0] + q[1] * cam.up[1] + q[2] * cam.up[2];
+    const z = q[0] * cam.forward[0] + q[1] * cam.forward[1] + q[2] * cam.forward[2];
+    const visible = on[i] && z > 1e-9;
+    m.style.display = visible ? '' : 'none';
+    if (!visible) return;
+    m.style.left = `${w / 2 + x / z * v.lens * s0}px`;
+    m.style.top = `${h / 2 - y / z * v.lens * s0}px`;
+    m.style.borderColor = cols[i] || '#fff';
+    m.classList.toggle('active', i + 1 === mode);
+  });
+}
+
+// Deep Zoom hint: once, when the view gets closer than the classic surface
+// threshold can show.
+let dzHinted = false;
+state.onChange(id => {
+  const v = state.values;
+  // Clear the hint as soon as Deep Zoom is on (or a whole scene is loaded).
+  if ((id === 'deepZoom' || id == null || id === '*') && v.deepZoom && /Deep Zoom for sharp/.test($('toast').textContent)) $('toast').style.opacity = '0';
+  if (id !== 'dist' || dzHinted) return;
+  if (v.dist < 0.02 && !v.deepZoom) { dzHinted = true; toast('Very close: turn on View › Deep Zoom for sharp detail', 5000); }
+});
+
 // ── Keyboard ────────────────────────────────────────────────────────────────
 const keys = {};
 const typing = () => ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName) || dlg.open;
@@ -1185,6 +1269,7 @@ function frame(now) {
     }
   }
 
+  updateMarkers();
   if (now - hudTimer > 200) {
     hudTimer = now;
     if (!recorder) syncRecInfo(); // keeps the Record summary true to keys / layout
@@ -1192,6 +1277,14 @@ function frame(now) {
     const recTag = recorder ? (recSeq ? `● REC ${Math.min(seq.time, recSeq.dur).toFixed(1)}/${recSeq.dur.toFixed(1)} s · ` : '● REC · ') : '';
     const modeTag = v.renderMode === 1 ? (previewing ? 'PT preview · ' : 'path traced · ') : v.renderMode === 2 ? 'volume · ' : '';
     $('hud').textContent = recTag + (renderer.isCompiling() ? 'compiling shader… · ' : '') + modeTag + `${renderer.live.samples}/${cap} spp · ${lw}×${lh}`;
+    if (v.deepZoom || v.dist < 0.05) {
+      // One pixel's width at the target vs float32 resolution there (2^-23 · |p|).
+      const fp = v.dist / (v.lens * Math.min(lw, lh));
+      const ulp = 1.19e-7 * Math.max(Math.hypot(v.targetX, v.targetY, v.targetZ), 0.5);
+      const r = fp / ulp;
+      $('hud').textContent += ` · zoom ×${(5 / v.dist).toPrecision(3)} · ${r > 16 ? 'precision OK' : r > 2 ? 'near float32 limit' : 'beyond float32: blocky'}`
+        + (v.deepZoom ? ` · ${effectiveIterations(v)} it` : '');
+    }
   }
 }
 requestAnimationFrame(frame);

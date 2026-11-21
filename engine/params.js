@@ -40,6 +40,7 @@ export const GROUPS = [
   { id: 'render',  side: 'right', title: 'Render Mode', accent: true, open: true },
   { id: 'view',    side: 'right', title: 'View & Navigation' },
   { id: 'object',  side: 'right', title: 'Object Transform' },
+  { id: 'rep',     side: 'right', title: 'Repetition / Arrays', accent: true },
   { id: 'style',   side: 'right', title: 'Color & Lens', accent: true },
   { id: 'mat',     side: 'right', title: 'Materials & Textures', accent: true },
   { id: 'env',     side: 'right', title: 'Environment', accent: true },
@@ -125,6 +126,23 @@ export const PARAMS = [
   { id: 'vMinDE', label: 'Smooth DE (min over iterations)', type: 'bool', group: 'variant', def: false, gate: 'surfVariant', gateEq: 10 },
   { id: 'vMinDEStop', label: 'Smooth DE Until Iteration', type: 'range', group: 'variant', min: 1, max: 250, step: 1, def: 250, int: true, hardMin: 1, hardMax: 250, gate: 'vMinDE' },
   { id: 'vMinDEStart', label: 'Smooth DE From Iteration', type: 'range', group: 'variant', min: 0, max: 20, step: 1, def: 0, int: true, hardMin: 0, hardMax: 39, gate: 'vMinDE' },
+
+  // ── Repetition / arrays ──
+  { id: 'repMode', label: 'Repeat', type: 'select', group: 'rep', options: ['Off', 'Grid', 'Ring'], def: 0, interp: 'step' },
+  { id: 'repCountX', label: 'NX', type: 'range', group: 'rep', min: 0, max: 8, step: 1, def: 2, int: true, hardMin: 0, hardMax: 50, row: 'rcnt', section: 'Grid: copies each side of centre', gate: 'repMode', gateEq: 1 },
+  { id: 'repCountY', label: 'NY', type: 'range', group: 'rep', min: 0, max: 8, step: 1, def: 0, int: true, hardMin: 0, hardMax: 50, row: 'rcnt', gate: 'repMode', gateEq: 1 },
+  { id: 'repCountZ', label: 'NZ', type: 'range', group: 'rep', min: 0, max: 8, step: 1, def: 2, int: true, hardMin: 0, hardMax: 50, row: 'rcnt', gate: 'repMode', gateEq: 1 },
+  { id: 'repSpaceX', label: 'SX', type: 'range', group: 'rep', min: 0.5, max: 20, step: 0.01, def: 5, hardMin: 0.001, hardMax: 1000, row: 'rsp', section: 'Grid spacing', gate: 'repMode', gateEq: 1 },
+  { id: 'repSpaceY', label: 'SY', type: 'range', group: 'rep', min: 0.5, max: 20, step: 0.01, def: 5, hardMin: 0.001, hardMax: 1000, row: 'rsp', gate: 'repMode', gateEq: 1 },
+  { id: 'repSpaceZ', label: 'SZ', type: 'range', group: 'rep', min: 0.5, max: 20, step: 0.01, def: 5, hardMin: 0.001, hardMax: 1000, row: 'rsp', gate: 'repMode', gateEq: 1 },
+  { id: 'repRingN', label: 'Copies', type: 'range', group: 'rep', min: 2, max: 32, step: 1, def: 8, int: true, hardMin: 2, hardMax: 256, section: 'Ring', gate: 'repMode', gateEq: 2 },
+  { id: 'repRingR', label: 'Radius', type: 'range', group: 'rep', min: 0, max: 20, step: 0.01, def: 6, hardMin: 0, hardMax: 1000, gate: 'repMode', gateEq: 2 },
+  { id: 'repRingAxis', label: 'Ring Axis', type: 'select', group: 'rep', options: ['X', 'Y', 'Z'], def: 1, interp: 'step', gate: 'repMode', gateEq: 2 },
+  { id: 'repRingRotate', label: 'Copies Turn with the Ring', type: 'bool', group: 'rep', def: true, gate: 'repMode', gateEq: 2 },
+  { id: 'repRotVar', label: 'Rotation Variation (°)', type: 'range', group: 'rep', min: 0, max: 180, step: 0.5, def: 0, hardMin: 0, hardMax: 180, section: 'Per-copy variation', gate: 'repMode', gateEq: [1, 2], mutate: true },
+  { id: 'repScaleVar', label: 'Scale Variation', type: 'range', group: 'rep', min: 0, max: 0.5, step: 0.005, def: 0, hardMin: 0, hardMax: 0.9, gate: 'repMode', gateEq: [1, 2], mutate: true },
+  { id: 'repColVar', label: 'Colour Variation', type: 'range', group: 'rep', min: 0, max: 3, step: 0.01, def: 0, hardMin: 0, hardMax: 20, gate: 'repMode', gateEq: [1, 2], mutate: true },
+  { id: 'repSeed', label: 'Variation Seed', type: 'range', group: 'rep', min: 0, max: 100, step: 1, def: 0, int: true, hardMin: 0, hardMax: 100000, gate: 'repMode', gateEq: [1, 2] },
 
   // ── Kyma's own surf variants (11–15) ──
   { id: 'vLoxX', label: 'TX', type: 'range', group: 'variant', min: -3, max: 3, step: 0.001, def: 0, hardMin: -50, hardMax: 50, row: 'vlox', section: 'Spiral Twist about X / Y / Z', gate: 'surfVariant', gateEq: 11, mutate: true },
@@ -250,7 +268,11 @@ export const PARAMS = [
   // ── View & navigation ───────────────────────────────────────────────────
   { id: 'rotX', label: 'Orbit Horiz', type: 'range', group: 'view', min: -PI, max: PI, step: 0.001, def: 0, interp: 'angle', fine: true },
   { id: 'rotY', label: 'Orbit Vert', type: 'range', group: 'view', min: -1.55, max: 1.55, step: 0.001, def: 0, hardMin: -1.5707, hardMax: 1.5707, fine: true },
-  { id: 'dist', label: 'View Distance', type: 'range', group: 'view', min: 0.01, max: 20, step: 0.001, def: 5, hardMin: 0.0002 },
+  { id: 'dist', label: 'View Distance', type: 'range', group: 'view', min: 0.01, max: 20, step: 0.001, def: 5, hardMin: 1e-8 },
+  { id: 'deepZoom', label: 'Deep Zoom (pixel-sharp close-ups)', type: 'bool', group: 'view', def: false, section: 'Deep Zoom' },
+  { id: 'deepIters', label: 'Add Iterations as You Zoom', type: 'range', group: 'view', min: 0, max: 2, step: 0.05, def: 1, hardMin: 0, hardMax: 4, gate: 'deepZoom' },
+  { id: 'clickMode', label: 'Click on View', type: 'select', group: 'view', options: ['Orbit only', 'Place Main Light', 'Place Light 2', 'Place Light 3', 'Zoom ×2 into Point'], def: 0, interp: 'step', section: 'Click Tools' },
+  { id: 'lightPlace', label: 'Light Distance from Surface', type: 'range', group: 'view', min: 0.02, max: 2, step: 0.01, def: 0.3, hardMin: 0.001, hardMax: 20, gate: 'clickMode', gateEq: [1, 2, 3] },
   { id: 'lens', label: 'Lens (Focal Length)', type: 'range', group: 'view', min: 0.2, max: 4, step: 0.01, def: 1, hardMin: 0.05 },
   { id: 'rollX', label: 'Roll X (ξ)', type: 'range', group: 'view', min: -PI, max: PI, step: 0.001, def: 0, section: 'Orbit Roll System (ξ, η, ζ)', interp: 'angle', fine: true },
   { id: 'rollY', label: 'Roll Y (η)', type: 'range', group: 'view', min: -PI, max: PI, step: 0.001, def: 0, interp: 'angle', fine: true },
@@ -459,4 +481,13 @@ export function coerce(p, v) {
       return n;
     }
   }
+}
+
+// Iterations actually used: Deep Zoom can add iterations as the view closes in
+// (about 1 per halving of View Distance below 5 × Add Iterations as You Zoom),
+// since finer surface detail only appears after more folds.
+export function effectiveIterations(v) {
+  const base = v.iterations | 0;
+  if (!v.deepZoom || !(v.deepIters > 0) || !(v.dist < 5)) return base;
+  return Math.min(250, base + Math.round(Math.log2(5 / Math.max(v.dist, 1e-12)) * v.deepIters));
 }

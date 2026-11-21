@@ -4,7 +4,7 @@ import { PARAMS, GROUPS, defaults, coerce, PARAM_BY_ID } from '../engine/params.
 import { State } from '../engine/state.js';
 import { cameraBasis, pixelRay } from '../engine/camera.js';
 import { fractalRotation, dot, sub, normalize, length, cross, wrapPi, mat3Mul } from '../engine/vec.js';
-import { makeDE, makeWave, makeSurfStep, march, viewScore } from '../engine/de.js';
+import { makeDE, makeWave, makeSurfStep, march, marchInfo, viewScore, pickPixel } from '../engine/de.js';
 import { Sequencer, MODE, EASE } from '../engine/sequencer.js';
 import { encodeDiscovery, decodeDiscovery, evolve, rebirth, makeProject, parseProject, BIOMES } from '../engine/presets.js';
 import { sceneUniforms, jitterFor, lensFor } from '../engine/renderer.js';
@@ -193,8 +193,10 @@ section('fold types');
     }
     // Material builds (HAS_MAT) of every variant × mode, with and without texture LOD.
     for (let variant = 0; variant < 16; variant++) for (const mode of [0, 1, 2]) for (const texLod of [true, false]) combos.push([0, -1, mode, variant, undefined, true, texLod]);
-    for (const [a, b, mode, variant = 0, stack, mat = false, lod] of combos) {
-      writeFileSync('/tmp/surf-combo.frag', '#version 100\n' + fractalFrag(a, b, { mode, variant, stack, mat, texLod: lod ?? (a + b + variant) % 2 === 0 }));
+    // Repetition + Deep Zoom (+ materials + extra lights) builds.
+    for (let variant = 0; variant < 16; variant++) for (const mode of [0, 1, 2]) combos.push([0, -1, mode, variant, undefined, variant % 2 === 0, mode !== 1, { rep: true, dz: true, xl: variant % 3 === 0 }]);
+    for (const [a, b, mode, variant = 0, stack, mat = false, lod, extra = {}] of combos) {
+      writeFileSync('/tmp/surf-combo.frag', '#version 100\n' + fractalFrag(a, b, { mode, variant, stack, mat, texLod: lod ?? (a + b + variant) % 2 === 0, ...extra }));
       const r = spawnSync('glslangValidator', ['/tmp/surf-combo.frag']);
       n++;
       if (r.status !== 0) { bad++; console.log(`   glslang fail A=${a} B=${b} mode=${mode} variant=${variant} mat=${mat}:\n${r.stdout}`); }
@@ -730,6 +732,136 @@ section('extra lights');
   ok(rel.u_l3Pos.every((c, i) => Math.abs(c - rel.u_camPos[i]) < 1e-9), 'Light 3 "Follows Camera" at offset 0 sits on the camera');
   ok(specKey(specOf(on)) !== specKey(specOf(off)) && specKey(specOf(on)).endsWith('|xl'), 'light build gets its own program key');
   ok(['light2On', 'light2X', 'light2Color', 'light2Int', 'light2Shadows', 'light2Relative', 'light3On', 'light3Z'].every(id => PARAM_BY_ID.get(id)?.group === 'light'), 'Light 2 / 3 controls live in Atmosphere & Light');
+}
+
+section('repetition / deep zoom');
+{
+  const { effectiveIterations } = await import('../engine/params.js');
+  const { fractalFrag: ff } = await import('../engine/glsl.js');
+  const { specOf, specKey } = await import('../engine/renderer.js');
+  const base = { ...defaults(), juliaMode: true, juliaCX: 0.3, juliaCY: -0.2, juliaCZ: 0.1, iterations: 12 };
+  const one = makeDE(base);
+  // Grid: the copy in cell (i, j, k) is the original moved by (i·SX, j·SY, k·SZ).
+  const grid = { ...base, repMode: 1, repCountX: 2, repCountY: 1, repCountZ: 2, repSpaceX: 6, repSpaceY: 5, repSpaceZ: 7 };
+  const g = makeDE(grid);
+  let worst = 0;
+  for (const [i, j, k] of [[0, 0, 0], [1, 0, -2], [-2, 1, 2], [2, -1, 0]]) {
+    for (let n = 0; n < 40; n++) {
+      const q = [Math.sin(n) * 1.2, Math.cos(n * 1.3) * 1.2, Math.sin(n * 0.7) * 1.2];
+      const p = [q[0] + i * 6, q[1] + j * 5, q[2] + k * 7];
+      const a = one(q).d, b = g(p).d;
+      if (a < 1.2) worst = Math.max(worst, Math.abs(a - b) / Math.max(a, 1e-9)); // well inside the cell: equal
+    }
+  }
+  ok(worst < 1e-9, `grid: each copy is the original moved into its cell (max rel diff ${worst.toExponential(1)})`);
+  // Each copy is cut at its cell walls: the array's distance is never more than
+  // its own copy's distance or the distance to the nearest wall (+ the tiny pad),
+  // so rays stop at a wall and resume against the next cell's copy.
+  let viol = 0;
+  for (let n = 0; n < 600; n++) {
+    const p = [Math.sin(n * 1.7) * 16, Math.sin(n * 0.37 + 1) * 8, Math.cos(n * 2.3) * 18];
+    const idx = [[6, 2], [5, 1], [7, 2]].map(([sp, c], k) => Math.min(Math.max(Math.floor(p[k] / sp + 0.5), -c), c));
+    const own = one([p[0] - idx[0] * 6, p[1] - idx[1] * 5, p[2] - idx[2] * 7]).d;
+    viol = Math.max(viol, g(p).d - own);
+  }
+  ok(viol <= 1e-12, `grid: never steps past its own copy (max excess ${viol.toExponential(1)})`);
+  // A compact formula spaced wider than its size: identical to the full union of copies.
+  const { BIOMES: BB } = await import('../engine/presets.js');
+  const cbase = { ...defaults(), ...BB.kyma_ell.v };
+  // Ellipsoid Coral reaches ~4.1 from its centre, so spacing 9 keeps every copy inside its cell.
+  const cone = makeDE(cbase), cg = makeDE({ ...cbase, repMode: 1, repCountX: 2, repCountY: 1, repCountZ: 2, repSpaceX: 9, repSpaceY: 9, repSpaceZ: 9 });
+  // Safe step: inside the ball of radius (array DE) around any point there is
+  // no surface of any copy. "Surface" = a copy's own DE below 1e-4.
+  const solidGrid = q => {
+    const c = [Math.round(q[0] / 9), Math.round(q[1] / 9), Math.round(q[2] / 9)];
+    for (let i = c[0] - 1; i <= c[0] + 1; i++) for (let j = c[1] - 1; j <= c[1] + 1; j++) for (let k = c[2] - 1; k <= c[2] + 1; k++) {
+      if (Math.abs(i) > 2 || Math.abs(j) > 1 || Math.abs(k) > 2) continue;
+      if (cone([q[0] - i * 9, q[1] - j * 9, q[2] - k * 9]).d < 1e-4) return true;
+    }
+    return false;
+  };
+  let crossings = 0, tested = 0;
+  for (let n = 0; n < 160; n++) {
+    const p = [Math.sin(n * 1.7) * 20, Math.sin(n * 0.37 + 1) * 9, Math.cos(n * 2.3) * 20];
+    const R = cg(p).d;
+    for (let m = 0; m < 24; m++) {
+      const dir = [Math.sin(m * 2.4 + n), Math.cos(m * 1.7 - n), Math.sin(m * 0.9 + 2 * n)];
+      const L = Math.hypot(...dir), f = R * 0.999 * Math.cbrt(((m * 0.618) % 1));
+      const q = [p[0] + dir[0] / L * f, p[1] + dir[1] / L * f, p[2] + dir[2] / L * f];
+      tested++;
+      if (solidGrid(q)) crossings++;
+    }
+  }
+  ok(crossings === 0, `grid of a compact shape: no surface inside any step ball (${tested} samples)`);
+  // Ring: copy k is the original rotated by k·360°/N about the axis, then moved out by R.
+  const ring = { ...base, repMode: 2, repRingN: 6, repRingR: 5, repRingAxis: 1, repRingRotate: true };
+  const r = makeDE(ring);
+  let wr = 0;
+  for (let k = 0; k < 6; k++) {
+    const th = k * Math.PI / 3, c = Math.cos(th), sn = Math.sin(th);
+    for (let n = 0; n < 30; n++) {
+      const q = [Math.sin(n) * 1.1, Math.cos(n * 1.3) * 1.1, Math.sin(n * 0.7) * 1.1];
+      // local frame of the Y axis ring: w = (z, x, y); copy centre at angle th on the w.xy plane.
+      const wx = q[2] + 5, wy = q[0];
+      const W = [wx * c - wy * sn, wx * sn + wy * c, q[1]];
+      const p = [W[1], W[2], W[0]];
+      const a = one(q).d, b = r(p).d;
+      if (a < 1.0) wr = Math.max(wr, Math.abs(a - b) / Math.max(a, 1e-9));
+    }
+  }
+  ok(wr < 1e-9, `ring: each copy is the original turned and moved onto the ring (max rel diff ${wr.toExponential(1)})`);
+  const cring = makeDE({ ...cbase, repMode: 2, repRingN: 6, repRingR: 5, repRingAxis: 1, repRingRotate: true });
+  const solidRing = q => {
+    for (let k = 0; k < 6; k++) {
+      const th = -k * Math.PI / 3, c = Math.cos(th), sn = Math.sin(th);
+      const W = [q[2], q[0], q[1]];
+      const L = [W[0] * c - W[1] * sn - 5, W[0] * sn + W[1] * c, W[2]];
+      if (cone([L[1], L[2], L[0]]).d < 1e-4) return true;
+    }
+    return false;
+  };
+  let crossR = 0, testedR = 0;
+  for (let n = 0; n < 160; n++) {
+    const p = [Math.sin(n * 1.7) * 8, Math.sin(n * 0.37 + 1) * 3, Math.cos(n * 2.3) * 8];
+    const R = cring(p).d;
+    for (let m = 0; m < 24; m++) {
+      const dir = [Math.sin(m * 2.4 + n), Math.cos(m * 1.7 - n), Math.sin(m * 0.9 + 2 * n)];
+      const L = Math.hypot(...dir), f = R * 0.999 * Math.cbrt(((m * 0.618) % 1));
+      testedR++;
+      if (solidRing([p[0] + dir[0] / L * f, p[1] + dir[1] / L * f, p[2] + dir[2] / L * f])) crossR++;
+    }
+  }
+  ok(crossR === 0, `ring of a compact shape: no surface inside any step ball (${testedR} samples)`);
+  const varied = makeDE({ ...grid, repRotVar: 40, repScaleVar: 0.3, repColVar: 1, repSeed: 7 });
+  let fin = true, trapDiff = 0;
+  for (let n = 0; n < 200; n++) {
+    const p = [Math.sin(n) * 14, Math.cos(n * 1.3) * 6, Math.sin(n * 0.7) * 16];
+    const a = varied(p);
+    if (!(a.d >= 0) || !Number.isFinite(a.d)) fin = false;
+    trapDiff += Math.abs(a.trap - g(p).trap);
+  }
+  ok(fin && trapDiff > 0, 'per-copy rotation, scale and colour variation: finite DE, colour shifts per copy');
+  const su = sceneUniforms(grid);
+  ok(su.__rep && !sceneUniforms(defaults()).__rep && specKey(specOf(su)).includes('|rep'), 'repetition builds its own program only when on');
+
+  // Deep zoom.
+  ok(effectiveIterations({ iterations: 20, deepZoom: false, deepIters: 1, dist: 0.001 }) === 20, 'Deep Zoom off: iterations unchanged');
+  ok(effectiveIterations({ iterations: 20, deepZoom: true, deepIters: 1, dist: 5 / 1024 }) === 30, 'Deep Zoom: +1 iteration per halving of the view distance');
+  ok(effectiveIterations({ iterations: 245, deepZoom: true, deepIters: 2, dist: 1e-6 }) === 250, 'Deep Zoom: capped at 250 iterations');
+  const dz = sceneUniforms({ ...defaults(), deepZoom: true, dist: 0.01 });
+  ok(dz.__dz && dz.u_iterations === effectiveIterations({ ...defaults(), deepZoom: true, dist: 0.01 }) && specKey(specOf(dz)).includes('|dz'), 'Deep Zoom builds its own program and sends the extra iterations');
+  for (const mode of [0, 1, 2]) {
+    const cls = ff(0, -1, { mode });
+    ok(!/#define (DEEP_ZOOM|HAS_REP)/.test(cls), `mode ${mode}: classic build has neither repetition nor deep zoom`);
+    ok(/#define DEEP_ZOOM/.test(ff(0, -1, { mode, dz: true })) && /#define HAS_REP/.test(ff(0, -1, { mode, rep: true })), `mode ${mode}: flags define their code`);
+  }
+  // The CPU marcher uses the pixel-sized threshold in Deep Zoom (picking matches the GPU).
+  const tiny = { ...defaults(), surfVariant: 1, dist: 0.002, deepZoom: true, detail: 1 };
+  const coarse = marchInfo(makeDE(tiny), [0, 0, 3], [0, 0, -1], { ...tiny, deepZoom: false });
+  const fine = marchInfo(makeDE(tiny), [0, 0, 3], [0, 0, -1], { ...tiny, __pix: 1 / 800 / 1e3 });
+  ok(fine.reason !== 'nan' && (fine.t < 0 || coarse.t < 0 || fine.t >= coarse.t - 1e-12), 'Deep Zoom threshold is never coarser than the classic one');
+  const pk = pickPixel({ ...defaults() }, 400, 225, 800, 450);
+  ok(pk.t > 0 && Math.abs(Math.hypot(...pk.n) - 1) < 1e-9 && pk.n.reduce((a, x, i) => a + x * (pk.eye[i] - pk.p[i]), 0) > 0, 'pick: hit point with a unit normal facing the camera');
 }
 
 section('mandelbulber import');

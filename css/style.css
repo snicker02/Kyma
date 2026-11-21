@@ -252,3 +252,10 @@ dialog .dlg-buttons { display: flex; gap: 10px; justify-content: flex-end; margi
 .mut-cell canvas { width: 100%; height: 100%; display: block; }
 .mut-tag { position: absolute; left: 6px; bottom: 6px; background: rgba(5,5,12,0.7); color: rgba(255,255,255,0.75); font-size: 0.55rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; padding: 3px 8px; border-radius: 8px; pointer-events: none; }
 .mut-note { font-size: 0.58rem; color: var(--gray-500); text-align: center; }
+
+/* ── Light markers (click tools) ───────────────────────────────────────── */
+.light-markers { position: absolute; inset: 0; pointer-events: none; z-index: 5; }
+.light-marker { position: absolute; width: 22px; height: 22px; margin: -11px 0 0 -11px; border-radius: 50%; border: 2px solid #fff;
+  background: rgba(5,5,12,0.55); color: #fff; font-size: 0.55rem; font-weight: 800; display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 0 10px rgba(0,0,0,0.6); }
+.light-marker.active { box-shadow: 0 0 0 3px rgba(255,255,255,0.35), 0 0 14px rgba(255,255,255,0.5); }
