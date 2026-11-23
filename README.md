@@ -1,4 +1,4 @@
-# Kyma v2.20.0
+# Kyma v2.20.1
 
 **Kyma** (κῦμα, Greek for "wave") is a progressive WebGL1 raymarcher for Kali's **Amazing Surf** fractal family. It includes all nine of Mandelbulber's surf formulas, path tracing, volumetric glow and environment lighting. It has no dependencies and no build step. It was formerly *Amazing Surf*; old project files, discovery strings (`SURF2:`) and saved panel layouts still load.
 
@@ -67,7 +67,7 @@ Things to know:
 | 3 | Surf XY | Reference Mandelbulber Amazing Surf: X/Y only |
 | 4 | Tetrahedral + Box | Sierpinski mirror symmetry |
 | 5 | Octahedral + Box | abs + sort (Menger-style), cubic and stepped |
-| 6 | Icosahedral + Box | Knighty three-plane fold, five-fold quasi-crystal |
+| 6 | Icosahedral + Box | fold into one of the 120 icosahedral mirror cells, then box |
 | 7 | Polar Kaleidoscope | N angular sectors around Z, then XY box; rosettes face-on |
 | 8 | Smooth Box (tanh) | `2f·tanh(z/f) − z`: box fold with rounded creases |
 | 9 | Abs Shift (Kali) | `abs(z) − limit`: kaleidoscopic IFS step |

@@ -10,9 +10,8 @@ import { effectiveIterations } from './params.js';
 const abs = Math.abs, sgn = Math.sign;
 const PHI = 1.6180339887;
 const nrm = a => { const l = Math.hypot(a[0], a[1], a[2]); return [a[0] / l, a[1] / l, a[2] / l]; };
-const N1 = nrm([-1, PHI - 1, 1 / (PHI - 1)]);
-const N2 = nrm([PHI - 1, 1 / (PHI - 1), -1]);
-const N3 = nrm([1 / (PHI - 1), -1, PHI - 1]);
+// Icosahedral (H3) golden mirror — see ICO_N in glsl.js.
+export const ICO_N = [-PHI / 2, -0.5, 1 / (2 * PHI)];
 
 const dot3 = z => z[0] * z[0] + z[1] * z[1] + z[2] * z[2];
 const boxF = (x, f) => abs(x + f) - abs(x - f) - x;
@@ -266,8 +265,7 @@ export function makeDE(v, scaleOverride) {
         return boxT([x, y, w]);
       }
       case 6: {
-        z = [abs(z[0]), abs(z[1]), abs(z[2])];
-        for (let k = 0; k < 2; k++) { z = reflect(z, N1); z = reflect(z, N2); z = reflect(z, N3); }
+        for (let k = 0; k < 6; k++) { z = reflect([abs(z[0]), abs(z[1]), z[2]], ICO_N); }
         return boxT(z);
       }
       case 7: {

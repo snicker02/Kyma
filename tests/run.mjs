@@ -4,7 +4,7 @@ import { PARAMS, GROUPS, defaults, coerce, PARAM_BY_ID } from '../engine/params.
 import { State } from '../engine/state.js';
 import { cameraBasis, pixelRay } from '../engine/camera.js';
 import { fractalRotation, dot, sub, normalize, length, cross, wrapPi, mat3Mul } from '../engine/vec.js';
-import { makeDE, makeWave, makeSurfStep, march, marchInfo, viewScore, pickPixel } from '../engine/de.js';
+import { makeDE, makeWave, makeSurfStep, march, marchInfo, viewScore, pickPixel, ICO_N } from '../engine/de.js';
 import { Sequencer, MODE, EASE } from '../engine/sequencer.js';
 import { encodeDiscovery, decodeDiscovery, evolve, rebirth, makeProject, parseProject, BIOMES } from '../engine/presets.js';
 import { sceneUniforms, jitterFor, lensFor } from '../engine/renderer.js';
@@ -959,6 +959,30 @@ section('zip');
   const buf = Array.isArray(parts) ? Buffer.concat(parts.map(p => Buffer.from(p))) : Buffer.from(await parts.arrayBuffer());
   writeFileSync('/tmp/surf-test.zip', buf);
   ok(buf.length > 1000, 'zip written to /tmp/surf-test.zip (verified by python zipfile in CI step)');
+}
+
+section('icosahedral fold');
+{
+  // The icosahedral fold (fold type 6, before its box fold) lands in exactly
+  // one of the 120 mirror cells of Ih: cell = 1/120 of directions, idempotent.
+  const fold = z => { for (let k = 0; k < 6; k++) { z = [Math.abs(z[0]), Math.abs(z[1]), z[2]]; const d = Math.min(0, z[0] * ICO_N[0] + z[1] * ICO_N[1] + z[2] * ICO_N[2]); z = z.map((x, i) => x - 2 * d * ICO_N[i]); } return z; };
+  let s2 = 7; const r = () => (s2 = (s2 * 16807) % 2147483647) / 2147483647;
+  const g = () => Math.sqrt(-2 * Math.log(r())) * Math.cos(2 * Math.PI * r());
+  let fixed = 0, idem = 0; const n = 300000;
+  for (let i = 0; i < n; i++) {
+    let p = [g(), g(), g()]; const l = Math.hypot(...p); p = p.map(x => x / l);
+    const f = fold(p), f2 = fold(f);
+    if (Math.hypot(f[0] - p[0], f[1] - p[1], f[2] - p[2]) < 1e-12) fixed++;
+    if (Math.hypot(f2[0] - f[0], f2[1] - f[1], f2[2] - f[2]) < 1e-9) idem++;
+  }
+  ok(Math.abs(fixed / n * 120 - 1) < 0.06 && idem === n, `icosahedral fold: one cell of 120 (×120 = ${(fixed / n * 120).toFixed(3)}), idempotent`);
+  ok(Math.abs(Math.hypot(...ICO_N) - 1) < 1e-9, 'icosahedral mirror normal is unit length');
+  // The fractal is invariant under a 5-fold rotation about a vertex axis.
+  const PHI = (1 + Math.sqrt(5)) / 2, ax = [0, 1, PHI].map(x => x / Math.hypot(1, PHI)), th = 2 * Math.PI / 5;
+  const rot = p => { const c = Math.cos(th), s = Math.sin(th), d = ax[0] * p[0] + ax[1] * p[1] + ax[2] * p[2], cr = [ax[1] * p[2] - ax[2] * p[1], ax[2] * p[0] - ax[0] * p[2], ax[0] * p[1] - ax[1] * p[0]]; return p.map((x, i) => x * c + cr[i] * s + ax[i] * d * (1 - c)); };
+  const m = makeDE({ ...defaults(), foldType: 6, juliaMode: true, juliaCX: 0, juliaCY: 0, juliaCZ: 0, alpha: 0, beta: 0, gamma: 0 });
+  let w = 0; for (let i = 0; i < 200; i++) { const p = [r() * 3 - 1.5, r() * 3 - 1.5, r() * 3 - 1.5]; w = Math.max(w, Math.abs(m(p).d - m(rot(p)).d)); }
+  ok(w < 1e-9, `icosahedral fold type: DE invariant under a 5-fold vertex rotation (max diff ${w.toExponential(1)})`);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
