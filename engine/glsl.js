@@ -61,12 +61,12 @@ export const FOLD_GLSL = [
     if (z.y < z.z) z.yz = z.zy;
     z = boxFold(z);
     if (u_tgladWeight > 0.0) z = tgladSmooth(z, u_fold, vec3(1.0));`,
-  // 6 Icosahedral symmetry (Knighty three-plane fold, two passes) + box
-  `z = abs(z);
-    for (int k = 0; k < 2; k++) {
-      z -= 2.0 * min(0.0, dot(z, ICO_N1)) * ICO_N1;
-      z -= 2.0 * min(0.0, dot(z, ICO_N2)) * ICO_N2;
-      z -= 2.0 * min(0.0, dot(z, ICO_N3)) * ICO_N3;
+  // 6 Icosahedral symmetry + box. Mirrors x = 0, y = 0 and the golden mirror
+  //   ICO_N bound one cell of the 120-element group Ih; six passes always
+  //   land in it (tests/run.mjs checks the cell is 1/120 of space).
+  `for (int k = 0; k < 6; k++) {
+      z.xy = abs(z.xy);
+      z -= 2.0 * min(0.0, dot(z, ICO_N)) * ICO_N;
     }
     z = boxFold(z);
     if (u_tgladWeight > 0.0) z = tgladSmooth(z, u_fold, vec3(1.0));`,
@@ -253,10 +253,9 @@ uniform float u_aoStrength;
 uniform bool  u_shadows;
 uniform float u_shadowSoft;
 
-// Icosahedral fold planes (golden ratio).
-const vec3 ICO_N1 = vec3(-0.4999999976, 0.3090169932, 0.8090169935);
-const vec3 ICO_N2 = vec3(0.3090169932, 0.8090169935, -0.4999999976);
-const vec3 ICO_N3 = vec3(0.8090169935, -0.4999999976, 0.3090169932);
+// Icosahedral (H3) golden mirror: with x = 0 and y = 0 it bounds one cell of
+// Ih (angles π/2, π/3, π/5). Normal (−φ/2, −1/2, 1/(2φ)).
+const vec3 ICO_N = vec3(-0.8090169944, -0.5, 0.3090169944);
 
 vec3 permute(vec3 v, int order) {
   if (order == 1) return v.xzy;

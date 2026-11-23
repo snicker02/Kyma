@@ -22,7 +22,7 @@ import { MutationGrid } from './ui/mutation.js';
 import { initMobileTabs } from './ui/mobiletabs.js';
 import { proceduralTexture, imageTexture, TEX_KEYS } from './engine/textures.js';
 
-export const VERSION = '2.20.0';
+export const VERSION = '2.20.1';
 
 const $ = id => document.getElementById(id);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
@@ -307,7 +307,7 @@ const FOLD_DESC = [
   'The reference Mandelbulber Amazing Surf: folds X and Y only, leaving Z alone. Sheet-like and surfing.',
   'Sierpinski tetrahedral mirror symmetry, then a box fold. Triangular, pyramidal motifs.',
   'Octahedral symmetry (abs + axis sort, as in the Menger sponge), then a box fold. Cubic and stepped.',
-  'Icosahedral (Knighty three-plane) symmetry, then a box fold. Five-fold, quasi-crystal structure.',
+  'Full icosahedral symmetry (folds into one of the 120 mirror cells), then a box fold. Five-fold, quasi-crystal structure.',
   'Polar kaleidoscope: mirrors space into N angular sectors around Z (Polar Sectors), then an XY box fold. Mandala and rosette forms.',
   'Smooth box fold, 2f·tanh(z/f) − z: the box fold with its creases rounded off. Soft and organic, with no hard seams.',
   'Abs Shift: the Kali kaleidoscopic IFS step, abs(z) − limit. Crystalline and lacy, and very sensitive to the fold limits.',
