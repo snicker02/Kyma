@@ -22,7 +22,7 @@ import { MutationGrid } from './ui/mutation.js';
 import { initMobileTabs } from './ui/mobiletabs.js';
 import { proceduralTexture, imageTexture, TEX_KEYS } from './engine/textures.js';
 
-export const VERSION = '2.20.1';
+export const VERSION = '2.21.0';
 
 const $ = id => document.getElementById(id);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
@@ -1335,6 +1335,20 @@ function frame(now) {
   }
 }
 requestAnimationFrame(frame);
+
+// ── Shared image shelf (snicker02.github.io/shared/bridge.js) ──────────────
+// A shelf image becomes the environment, the same as Load Image or a drop on the stage.
+if (window.SnickerShelf) {
+  window.SnickerShelf.mount({
+    app: 'Kyma',
+    button: $('shelfBtn'),
+    onImage: (file) => loadEnvImage(file),
+    getImage: () => canvasToPngBlob(canvas),
+    getMeta: () => ({ name: `kyma-${canvas.width}x${canvas.height}-${stamp()}.png` }),
+  });
+} else {
+  $('shelfBtn').hidden = true;
+}
 
 // Debug / test hook.
 window.__surf = { state, seq, renderer, VERSION, mutGrid };
