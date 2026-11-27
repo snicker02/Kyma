@@ -1,0 +1,4 @@
+[submodule "core"]
+	path = core
+	url = https://github.com/snicker02/Organon.git
+	branch = main

@@ -1,15 +1,21 @@
-# Kyma v2.21.0
+# Kyma v2.22.0
 
 **Kyma** (κῦμα, Greek for "wave") is a progressive WebGL1 raymarcher for Kali's **Amazing Surf** fractal family. It includes all nine of Mandelbulber's surf formulas, path tracing, volumetric glow and environment lighting. It has no dependencies and no build step. It was formerly *Amazing Surf*; old project files, discovery strings (`SURF2:`) and saved panel layouts still load.
 
+Kyma is the Amazing Surf formula module (`formula/`) running on [**Organon**](https://github.com/snicker02/Organon), the engine it shares with [Eidos](https://github.com/snicker02/Eidos). Organon is included as a git submodule at `core/`.
+
 ## Run
 
-ES modules need a local server, because `file://` blocks module imports:
+Clone with the engine. ES modules also need a local server, because `file://` blocks module imports:
 
 ```
+git clone --recurse-submodules https://github.com/snicker02/Kyma.git
+cd Kyma
 python3 -m http.server 8000
 # open http://localhost:8000
 ```
+
+If you already cloned without `--recurse-submodules`, run `git submodule update --init`. To move Kyma to a newer engine, run `git submodule update --remote core` on a branch, test, and commit the bump.
 
 ## Layout
 
@@ -531,43 +537,37 @@ The **Environment** group sets the background in one of three modes: a **Solid C
 ## Files
 
 ```
-index.html          docked three-column shell
-css/style.css       all styling
-main.js             wiring: loop, input, docks, exports, history, sequencer UI
-engine/
-  params.js         parameter schema (single source of truth; group → dock side)
-  state.js          observable store; `version` drives accumulation resets
-  glsl.js           shader sources; fractalFrag(foldA, foldB) specialisation
-  gl.js             raw WebGL1 helpers, float-target detection
-  renderer.js       program cache, progressive ping-pong accumulation
-  camera.js         orbit / fly / roll camera basis
-  de.js             CPU port of the distance estimator (autofocus, Rebirth, tests)
-  sequencer.js      keyframes: Catmull-Rom / ease, loop, ping-pong
-  presets.js        biomes, Evolve, Rebirth, discovery-string codec
-  export.js         tiled multi-sample PNG rendering
-  zip.js            store-only ZIP writer for frame sequences
-  video.js          WebCodecs encoder wrapper: codec/level selection, bitrate presets
-  mux.js            dependency-free MP4 (H.264) and WebM (VP8/VP9) muxers
-  gradients.js      gradient library, OKLab blending, modifiers → 256-texel LUT
-  mbimport.js       Mandelbulber .fract importer (Amazing IFS, Amazing Surf Mod 1)
-  environment.js    procedural sky presets, image → power-of-two env texture
-  textures.js       tileable procedural material textures, image → power-of-two texture
-  vec.js            vector/matrix helpers
-ui/panel.js         builds both docks from the schema
-ui/mutation.js      mutation grid: breeding, per-tile live rendering
+index.html          docked three-column shell (styles: core/css/style.css)
+main.js             entry point: installs the formula, then loads the Organon app shell
+formula/            Kyma's formula module (the Organon contract, see core/README.md)
+  index.js          the formula object: names, presets menu, hooks
+  params.js         left-dock parameter schema (surf variants, folds, inversion, wave warp, iteration)
+  glsl.js           formula uniforms, fold bodies, mapLocal(); spec → specialised program
+  uniforms.js       formula uniforms + program-spec data from the state
+  de.js             CPU port of mapLocal (autofocus, Rebirth, tests)
+  presets.js        biomes, Mandelbulber variant defaults / descriptions, Rebirth geometry, legacy migration
+  mbimport.js       .fract import of Amazing IFS / Amazing Surf Mod 1 (the scene part is Organon's)
+  ui.js             surf-variant description, Load Variant Defaults, fold descriptions
+core/               Organon engine (git submodule): renderer, camera, scene params, UI, sequencer,
+                    export, video, .fract scene import …  — see core/README.md
+presets/batjorge/   Jorge's Mandelbulber settings files (the batjorge.com presets)
 tests/run.mjs       node logic tests      (npm test)
 tests/browser.mjs   headless-GPU checks   (dev only, needs Playwright)
+tests/lib.mjs       the formula on the engine, under the names the tests use
+tests/mb_reference.mjs  Mandelbulber formula ports used by the import tests
 ```
 
-Adding a parameter takes three steps:
-1. Add one line to `engine/params.js`.
-2. Add its uniform in `sceneUniforms()` (`renderer.js`).
-3. Declare it in the shader.
+Adding a formula parameter takes three steps:
+1. Add one line to `formula/params.js`.
+2. Add its uniform in `formula/uniforms.js`.
+3. Declare it in `UNIFORMS` (`formula/glsl.js`).
+
+Scene and output parameters (right dock) live in Organon, in `core/engine/params.js`.
 
 To add a fold to the classic engine:
-1. Append its GLSL body to `FOLD_GLSL` (`glsl.js`).
-2. Add the matching case to `applyFold` in `de.js`.
-3. Add its name to `FOLD_NAMES` (`params.js`).
+1. Append its GLSL body to `FOLD_GLSL` (`formula/glsl.js`).
+2. Add the matching case to `applyFold` in `formula/de.js`.
+3. Add its name to `FOLD_NAMES` (`formula/params.js`).
 
 The tests check that the GPU and CPU versions agree and that the fold is 1-Lipschitz.
 
