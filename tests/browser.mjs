@@ -37,12 +37,12 @@ await page.screenshot({ path: `${OUT}/default.png` });
 
 // GLSL ↔ CPU distance-estimator parity.
 const parity = await page.evaluate(async () => {
-  const { fractalMapSource, VERT } = await import('/engine/glsl.js');
-  const { compileProgram, setUniforms } = await import('/engine/gl.js');
-  const { sceneUniforms } = await import('/engine/renderer.js');
-  const { makeDE } = await import('/engine/de.js');
-  const { BIOMES, VARIANT_DEFAULTS } = await import('/engine/presets.js');
-  const { defaults } = await import('/engine/params.js');
+  const { fractalMapSource, VERT } = await import('/tests/lib.mjs');
+  const { compileProgram, setUniforms } = await import('/tests/lib.mjs');
+  const { sceneUniforms } = await import('/tests/lib.mjs');
+  const { makeDE } = await import('/tests/lib.mjs');
+  const { BIOMES, VARIANT_DEFAULTS } = await import('/tests/lib.mjs');
+  const { defaults } = await import('/tests/lib.mjs');
   const tail = `
 uniform vec3 u_p;
 vec4 pack(float v) { vec4 e = fract(v * vec4(1.0, 255.0, 65025.0, 16581375.0)); e -= e.yzww * vec4(1.0/255.0, 1.0/255.0, 1.0/255.0, 0.0); return e; }
@@ -126,8 +126,8 @@ for (const r of parity) ok(r.worst < 0.02 && r.n >= 8, `DE parity ${r.name.padEn
 
 // Tiled exporter must equal the live renderer at 1 spp (checks tiling, offsets, Y flip).
 const tile = await page.evaluate(async () => {
-  const { renderImage } = await import('/engine/export.js');
-  const { sceneUniforms } = await import('/engine/renderer.js');
+  const { renderImage } = await import('/tests/lib.mjs');
+  const { sceneUniforms } = await import('/tests/lib.mjs');
   const s = window.__surf;
   s.state.setMany({ maxSamples: 1, renderScale: 1, rotX: 0.6, rotY: 0.25, targetX: 0.3 });
   await new Promise(r => setTimeout(r, 400));
@@ -147,9 +147,9 @@ ok(tile.mean < 0.5 && tile.maxd <= 8, `tiled export == live (${tile.W}×${tile.H
 
 // Every render mode produces a finite, non-black image through the export path.
 const modes = await page.evaluate(async () => {
-  const { renderImage } = await import('/engine/export.js');
-  const { sceneUniforms } = await import('/engine/renderer.js');
-  const { defaults } = await import('/engine/params.js');
+  const { renderImage } = await import('/tests/lib.mjs');
+  const { sceneUniforms } = await import('/tests/lib.mjs');
+  const { defaults } = await import('/tests/lib.mjs');
   const out = [];
   for (const mode of [0, 1, 2]) {
     const v = { ...defaults(), renderMode: mode, foldType: 3, juliaCX: 0.6, juliaCY: 0.3, juliaCZ: 0.5, rotY: 0.45, dist: 4.5, ptSky: 1.5 };
@@ -164,9 +164,9 @@ const modes = await page.evaluate(async () => {
 for (const m of modes) ok(m.mean > 4 && m.contrast > 10, `render mode ${['surface', 'path traced', 'volumetric'][m.mode]}: mean ${m.mean.toFixed(1)}, contrast ${m.contrast.toFixed(0)}`);
 
 // Biome screenshots (few samples, swiftshader is slow).
-for (const key of ['default', ...Object.keys(await page.evaluate(async () => (await import('/engine/presets.js')).BIOMES))]) {
+for (const key of ['default', ...Object.keys(await page.evaluate(async () => (await import('/tests/lib.mjs')).BIOMES))]) {
   await page.evaluate(async k => {
-    const { BIOMES } = await import('/engine/presets.js');
+    const { BIOMES } = await import('/tests/lib.mjs');
     const s = window.__surf;
     s.state.resetAll();
     if (k !== 'default') s.state.setMany(BIOMES[k].v);
@@ -236,12 +236,12 @@ await clickText('Redo');
 ok(await page.evaluate(() => JSON.stringify(window.__surf.state.values)) !== afterEvolve, 'Redo re-applies Rebirth');
 
 // Discovery copy → load round trip through the dialog.
-const disc = await page.evaluate(async () => (await import('/engine/presets.js')).encodeDiscovery(window.__surf.state.values));
+const disc = await page.evaluate(async () => (await import('/tests/lib.mjs')).encodeDiscovery(window.__surf.state.values));
 await page.evaluate(() => window.__surf.state.resetAll());
 await clickText('Load String');
 await page.fill('#discText', disc, { timeout: 600000 });
 await page.click('#discLoad', { timeout: 180000, noWaitAfter: true });
-const reloaded = await page.evaluate(async () => (await import('/engine/presets.js')).encodeDiscovery(window.__surf.state.values));
+const reloaded = await page.evaluate(async () => (await import('/tests/lib.mjs')).encodeDiscovery(window.__surf.state.values));
 ok(reloaded === disc, 'discovery string loads through the dialog');
 
 // Keyframes: K adds, Space plays, sequence moves the camera.
@@ -349,7 +349,7 @@ ok(/\.png$/.test(png.suggestedFilename()), `image downloaded: ${png.suggestedFil
 {
   const g = await page.evaluate(async () => {
     const s = window.__surf;
-    const { BIOMES } = await import('/engine/presets.js');
+    const { BIOMES } = await import('/tests/lib.mjs');
     s.state.setMany({ ...BIOMES.chalice.v, renderScale: 0.25, maxSamples: 1 });
     s.state.set('groundType', 2, 'ui');
     const col = s.state.values.groundColor;
@@ -439,7 +439,7 @@ await page.screenshot({ path: `${OUT}/ui-full.png`, timeout: 600000 });
 {
   const shoot = async over => {
     await page.evaluate(async o => {
-      const { BIOMES } = await import('/engine/presets.js');
+      const { BIOMES } = await import('/tests/lib.mjs');
       const s = window.__surf; s.state.resetAll();
       s.state.setMany({ ...BIOMES.ifs_ring.v, dist: 6, maxSamples: 1, renderScale: 0.2, ...o });
       s.renderer.resetLive(); // no stale frame from the previous case
@@ -477,7 +477,7 @@ await page.screenshot({ path: `${OUT}/ui-full.png`, timeout: 600000 });
 // ── Mutation grid ──
 {
   await page.evaluate(async () => {
-    const { BIOMES } = await import('/engine/presets.js');
+    const { BIOMES } = await import('/tests/lib.mjs');
     const s = window.__surf; s.state.resetAll();
     s.state.setMany({ ...BIOMES.ifs_shells.v, maxSamples: 1, renderScale: 0.2 });
     s.mutGrid.maxSamples = 1;
@@ -515,7 +515,7 @@ await page.screenshot({ path: `${OUT}/ui-full.png`, timeout: 600000 });
   });
   const scene = async o => {
     await page.evaluate(async o => {
-      const { BIOMES } = await import('/engine/presets.js');
+      const { BIOMES } = await import('/tests/lib.mjs');
       const s = window.__surf; s.state.resetAll();
       s.state.setMany({ ...BIOMES.kyma_ell.v, maxSamples: 1, renderScale: 0.25, ...o });
       s.renderer.resetLive();
@@ -532,7 +532,7 @@ await page.screenshot({ path: `${OUT}/ui-full.png`, timeout: 600000 });
   const close = { dist: 0.0005, targetX: 0, targetY: 0, targetZ: 0 };
   await scene({}); // pick on the single, unrepeated object
   const hit = await page.evaluate(async () => {
-    const { pickPixel } = await import('/engine/de.js');
+    const { pickPixel } = await import('/tests/lib.mjs');
     const v = window.__surf.state.values;
     const c = document.getElementById('view');
     return pickPixel(v, c.clientWidth / 2, c.clientHeight / 2, c.clientWidth, c.clientHeight).p;
@@ -553,7 +553,7 @@ await page.screenshot({ path: `${OUT}/ui-full.png`, timeout: 600000 });
   await page.mouse.move(cx, cy); await page.mouse.down(); await page.mouse.up();
   await page.waitForTimeout(300);
   const placed = await page.evaluate(async () => {
-    const { pickPixel } = await import('/engine/de.js');
+    const { pickPixel } = await import('/tests/lib.mjs');
     const v = window.__surf.state.values, c = document.getElementById('view');
     const h = pickPixel(v, c.clientWidth / 2, c.clientHeight / 2, c.clientWidth, c.clientHeight);
     const L = [v.light2X, v.light2Y, v.light2Z];
@@ -586,7 +586,7 @@ await page.screenshot({ path: `${OUT}/ui-full.png`, timeout: 600000 });
 {
   const shootL = async over => {
     await page.evaluate(async o => {
-      const { BIOMES } = await import('/engine/presets.js');
+      const { BIOMES } = await import('/tests/lib.mjs');
       const s = window.__surf; s.state.resetAll();
       s.state.setMany({ ...BIOMES.ifs_ring.v, dist: 6, maxSamples: 1, renderScale: 0.2, ...o });
       s.renderer.resetLive();

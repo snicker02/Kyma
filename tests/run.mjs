@@ -1,16 +1,16 @@
 // Headless logic tests: `node tests/run.mjs` (no dependencies).
 
-import { PARAMS, GROUPS, defaults, coerce, PARAM_BY_ID } from '../engine/params.js';
-import { State } from '../engine/state.js';
-import { cameraBasis, pixelRay } from '../engine/camera.js';
-import { fractalRotation, dot, sub, normalize, length, cross, wrapPi, mat3Mul } from '../engine/vec.js';
-import { makeDE, makeWave, makeSurfStep, march, marchInfo, viewScore, pickPixel, ICO_N } from '../engine/de.js';
-import { Sequencer, MODE, EASE } from '../engine/sequencer.js';
-import { encodeDiscovery, decodeDiscovery, evolve, rebirth, makeProject, parseProject, BIOMES } from '../engine/presets.js';
-import { sceneUniforms, jitterFor, lensFor } from '../engine/renderer.js';
-import { FRACTAL_FRAG, fractalFrag, FOLD_GLSL } from '../engine/glsl.js';
+import { PARAMS, GROUPS, defaults, coerce, PARAM_BY_ID } from './lib.mjs';
+import { State } from './lib.mjs';
+import { cameraBasis, pixelRay } from './lib.mjs';
+import { fractalRotation, dot, sub, normalize, length, cross, wrapPi, mat3Mul } from './lib.mjs';
+import { makeDE, makeWave, makeSurfStep, march, marchInfo, viewScore, pickPixel, ICO_N } from './lib.mjs';
+import { Sequencer, MODE, EASE } from './lib.mjs';
+import { encodeDiscovery, decodeDiscovery, evolve, rebirth, makeProject, parseProject, BIOMES } from './lib.mjs';
+import { sceneUniforms, jitterFor, lensFor } from './lib.mjs';
+import { FRACTAL_FRAG, fractalFrag, FOLD_GLSL } from './lib.mjs';
 import { spawnSync } from 'node:child_process';
-import { ZipWriter, crc32 } from '../engine/zip.js';
+import { ZipWriter, crc32 } from './lib.mjs';
 import { writeFileSync } from 'node:fs';
 
 let pass = 0, fail = 0;
@@ -142,7 +142,7 @@ section('distance estimator');
 // ── Fold types ──────────────────────────────────────────────────────────────
 section('fold types');
 {
-  const { FOLD_NAMES } = await import('../engine/params.js');
+  const { FOLD_NAMES } = await import('./lib.mjs');
   // Every fold must be 1-Lipschitz (isometries, or contraction for the sine fold);
   // otherwise the distance estimate would overshoot and the march would tunnel.
   for (let type = 0; type < FOLD_NAMES.length; type++) {
@@ -179,7 +179,7 @@ section('fold types');
 
 // Every specialised program (11 A × 12 B) must compile as GLSL ES 1.00.
 {
-  const { FOLD_NAMES } = await import('../engine/params.js');
+  const { FOLD_NAMES } = await import('./lib.mjs');
   ok(FOLD_GLSL.length === FOLD_NAMES.length, 'FOLD_GLSL matches FOLD_NAMES');
   const probe = spawnSync('glslangValidator', ['--version']);
   if (probe.status === 0) {
@@ -229,7 +229,7 @@ section('rotations');
 // ── Cut-off diagnosis (the screenshot's settings) ───────────────────────────
 section('cut-off diagnosis');
 {
-  const { marchInfo } = await import('../engine/de.js');
+  const { marchInfo } = await import('./lib.mjs');
   const u = { ...base, foldX: 1.63, foldY: 2.28, foldZ: 0.12, juliaCX: -0.31, juliaCY: -0.28, juliaCZ: 0.01, cMult: -0.37, alpha: 2.0904, beta: 2.5284, gamma: 1.6744, invEnabled: true };
   const frac = (v) => {
     const cam = cameraBasis(v), map = makeDE(v); let st = 0;
@@ -240,7 +240,7 @@ section('cut-off diagnosis');
   console.log(`    stranded rays: detail 1 → ${(f1 * 100).toFixed(0)}%, detail 0.25 → ${(f2 * 100).toFixed(0)}%`);
   ok(f1 > 0.5 && f2 < 0.2, 'lowering Surface Detail resolves the reported cut-off');
   ok(marchInfo(makeDE(u), cameraBasis(u).eye, [0, 0, -1], { ...u, missAsHit: true }).t > 0, 'missAsHit turns stranded rays into hits');
-  const { suggestVolumeShell } = await import('../engine/de.js');
+  const { suggestVolumeShell } = await import('./lib.mjs');
   const sd = suggestVolumeShell(u), ss = suggestVolumeShell({ ...base, foldType: 3, juliaCX: 0.6, juliaCY: 0.3, juliaCZ: 0.5, rotY: 0.45, rotX: 0.3, dist: 4.5 });
   console.log(`    auto shell: dust → ${sd.kind} thick ${sd.volThick.toExponential(2)}, reef → ${ss.kind} thick ${ss.volThick}`);
   ok(sd.kind === 'dust' && sd.volThick < 0.001 && ss.kind === 'surface', 'Auto Shell separates dust fields from solid surfaces');
@@ -250,10 +250,10 @@ section('cut-off diagnosis');
 // ── Surf variants ───────────────────────────────────────────────────────────
 section('surf variants');
 {
-  const { SURF_VARIANTS, STACK_FOLDS } = await import('../engine/params.js');
-  const { VARIANT_DEFAULTS, isActive } = await import('../engine/presets.js');
-  const { specOf, specKey } = await import('../engine/renderer.js');
-  const { STACK_GLSL } = await import('../engine/glsl.js');
+  const { SURF_VARIANTS, STACK_FOLDS } = await import('./lib.mjs');
+  const { VARIANT_DEFAULTS, isActive } = await import('./lib.mjs');
+  const { specOf, specKey } = await import('./lib.mjs');
+  const { STACK_GLSL } = await import('./lib.mjs');
   ok(STACK_GLSL.length === STACK_FOLDS.length, 'STACK_GLSL matches STACK_FOLDS');
   ok(Object.keys(VARIANT_DEFAULTS).length === SURF_VARIANTS.length, 'every variant has a defaults entry');
   for (const [vi, d] of Object.entries(VARIANT_DEFAULTS)) for (const [k, val] of Object.entries(d)) {
@@ -399,9 +399,9 @@ section('amazing ifs vs Mandelbulber reference');
   // Line-by-line port of mandelbulber2 fractal_amazing_ifs.cpp FormulaCode (sphere
   // inversion off, aux colour ignored), written against Mandelbulber's own names.
   // Final distance as compute_fractal.cpp: linear = r / aux.DE, custom = aux.dist.
-  const { fractalRotation } = await import('../engine/vec.js');
-  const { PARAMS } = await import('../engine/params.js');
-  const { VARIANT_DEFAULTS } = await import('../engine/presets.js');
+  const { fractalRotation } = await import('./lib.mjs');
+  const { PARAMS } = await import('./lib.mjs');
+  const { VARIANT_DEFAULTS } = await import('./lib.mjs');
   const defs = Object.fromEntries(PARAMS.map(p => [p.id, p.def]));
   const fabs = Math.abs, sign = Math.sign;
   function mbAmazingIfs(c, f, iters) {
@@ -482,9 +482,9 @@ section('amazing ifs vs Mandelbulber reference');
 
 section('object transform');
 {
-  const { PARAMS } = await import('../engine/params.js');
+  const { PARAMS } = await import('./lib.mjs');
   const defs = Object.fromEntries(PARAMS.map(p => [p.id, p.def]));
-  const { eulerDeg, mat3MulVec } = await import('../engine/vec.js');
+  const { eulerDeg, mat3MulVec } = await import('./lib.mjs');
   const base = { ...defs };
   const xf = { ...defs, objX: 0.7, objY: -0.4, objZ: 1.1, objRotX: 25, objRotY: -40, objRotZ: 15, objScale: 1.7 };
   const m0 = makeDE(base), m1 = makeDE(xf);
@@ -504,7 +504,7 @@ section('object transform');
 section('wave warp');
 {
   const defs = defaults();
-  const { VARIANT_DEFAULTS } = await import('../engine/presets.js');
+  const { VARIANT_DEFAULTS } = await import('./lib.mjs');
   const names = ['', 'ripple', 'sine shear', 'wave fold', 'twist', 'gyroid', 'interference'];
   for (let t = 1; t <= 6; t++) {
     // 1. Amplitude 0 is the identity: DE equals the plain formula exactly.
@@ -543,12 +543,12 @@ section('wave warp');
 
 section('kyma surf variants 11–15');
 {
-  const { VARIANT_DESC, VARIANT_DEFAULTS: VD } = await import('../engine/presets.js');
-  const { SURF_VARIANTS } = await import('../engine/params.js');
+  const { VARIANT_DESC, VARIANT_DEFAULTS: VD } = await import('./lib.mjs');
+  const { SURF_VARIANTS } = await import('./lib.mjs');
   ok(VARIANT_DESC.length === SURF_VARIANTS.length && SURF_VARIANTS.every((n, i) => typeof VARIANT_DESC[i] === 'string' && VARIANT_DESC[i].length > 20), 'every formula has its own description (no gaps)');
   ok([11, 12, 13, 14, 15].every(i => VARIANT_DESC[i].startsWith(SURF_VARIANTS[i].replace(/ \(Kyma\)$/, ''))), 'descriptions line up with formula names');
   ok(SURF_VARIANTS.every((_, i) => VD[i]), 'every formula has defaults');
-  const { VARIANT_DEFAULTS } = await import('../engine/presets.js');
+  const { VARIANT_DEFAULTS } = await import('./lib.mjs');
   const names = { 11: 'Loxodromic', 12: 'Torus', 13: 'Ellipsoid', 14: 'Vortex', 15: 'Gyroid' };
   const shapes = {
     11: [{ vLoxZ: 0.6 }, { vLoxX: -2.5, vLoxZ: 0 }, { vLoxX: 0.7, vLoxY: 1.3, vLoxZ: -0.4, influence: 0.6 }],
@@ -611,7 +611,7 @@ section('kyma surf variants 11–15');
     ok(new Set(sigs).size === 4, `${names[vi]}: X, Y, Z twists are independent`);
   }
   // 3d. Saved v2.17.0 scenes (one Axis selector) convert to the same shape.
-  const { migrateLegacy, decodeDiscovery, parseProject } = await import('../engine/presets.js');
+  const { migrateLegacy, decodeDiscovery, parseProject } = await import('./lib.mjs');
   const mv = migrateLegacy({ vAxis: 1, vLox: 0.9, vTorusR: 0.7, vVortex: -0.3, vVortexDepth: 0.2, scale: 2 });
   ok(mv.vLoxX === 0 && mv.vLoxY === 0.9 && mv.vLoxZ === 0 && mv.vTorusOnY === true && !mv.vTorusOnX && !mv.vTorusOnZ && mv.vTorusRY === 0.7
     && mv.vVortexY === -0.3 && mv.vVortexDY === 0.2 && mv.vVortexX === 0 && !('vAxis' in mv) && mv.scale === 2, 'old Axis + value → that axis’s new controls');
@@ -630,9 +630,9 @@ section('kyma surf variants 11–15');
 
 section('mutation grid / textures / materials');
 {
-  const { breed } = await import('../ui/mutation.js');
-  const { TEX_GEN, TEX_KEYS } = await import('../engine/textures.js');
-  const { BIOMES } = await import('../engine/presets.js');
+  const { breed } = await import('./lib.mjs');
+  const { TEX_GEN, TEX_KEYS } = await import('./lib.mjs');
+  const { BIOMES } = await import('./lib.mjs');
   const parent = { ...defaults(), ...BIOMES.ifs_shells.v };
   const kids = breed(parent, 8, 0.08);
   ok(kids.length === 8 && kids.every(k => Object.keys(k).length >= 1), `breed: 8 children, each changes ≥1 gene (${kids.map(k => Object.keys(k).length).join(',')})`);
@@ -685,7 +685,7 @@ section('mutation grid / textures / materials');
   }
   const su1 = sceneUniforms({ ...defaults(), texMode: 1 }), su2 = sceneUniforms({ ...defaults(), creaseAmt: 0.2 }), su3 = sceneUniforms({ ...defaults(), matOn: true });
   ok(!sceneUniforms(defaults()).__mat && su1.__mat && su2.__mat && su3.__mat, 'material build only when materials, texture or crease is on');
-  const { specOf, specKey } = await import('../engine/renderer.js');
+  const { specOf, specKey } = await import('./lib.mjs');
   ok(specKey(specOf(su1)) !== specKey(specOf(sceneUniforms(defaults()))), 'material build gets its own program key');
   const su0 = sceneUniforms(defaults());
   ok(su0.u_matOn === false && su0.u_texMode === 0 && su0.u_crease === 0, 'materials, texture and crease are off by default');
@@ -695,8 +695,8 @@ section('mutation grid / textures / materials');
 
 section('extra lights');
 {
-  const { fractalFrag: ff } = await import('../engine/glsl.js');
-  const { specOf, specKey } = await import('../engine/renderer.js');
+  const { fractalFrag: ff } = await import('./lib.mjs');
+  const { specOf, specKey } = await import('./lib.mjs');
   const strip = (src, defs) => {
     const out = [], st = [];
     for (const line of src.split('\n')) {
@@ -736,9 +736,9 @@ section('extra lights');
 
 section('repetition / deep zoom');
 {
-  const { effectiveIterations } = await import('../engine/params.js');
-  const { fractalFrag: ff } = await import('../engine/glsl.js');
-  const { specOf, specKey } = await import('../engine/renderer.js');
+  const { effectiveIterations } = await import('./lib.mjs');
+  const { fractalFrag: ff } = await import('./lib.mjs');
+  const { specOf, specKey } = await import('./lib.mjs');
   const base = { ...defaults(), juliaMode: true, juliaCX: 0.3, juliaCY: -0.2, juliaCZ: 0.1, iterations: 12 };
   const one = makeDE(base);
   // Grid: the copy in cell (i, j, k) is the original moved by (i·SX, j·SY, k·SZ).
@@ -766,7 +766,7 @@ section('repetition / deep zoom');
   }
   ok(viol <= 1e-12, `grid: never steps past its own copy (max excess ${viol.toExponential(1)})`);
   // A compact formula spaced wider than its size: identical to the full union of copies.
-  const { BIOMES: BB } = await import('../engine/presets.js');
+  const { BIOMES: BB } = await import('./lib.mjs');
   const cbase = { ...defaults(), ...BB.kyma_ell.v };
   // Ellipsoid Coral reaches ~4.1 from its centre, so spacing 9 keeps every copy inside its cell.
   const cone = makeDE(cbase), cg = makeDE({ ...cbase, repMode: 1, repCountX: 2, repCountY: 1, repCountZ: 2, repSpaceX: 9, repSpaceY: 9, repSpaceZ: 9 });
@@ -867,10 +867,10 @@ section('repetition / deep zoom');
 section('mandelbulber import');
 {
   const { readFileSync } = await import('node:fs');
-  const { importMandelbulber, parseFract } = await import('../engine/mbimport.js');
+  const { importMandelbulber, parseFract } = await import('./lib.mjs');
   const { mbDistance } = await import('./mb_reference.mjs');
-  const { cameraBasis } = await import('../engine/camera.js');
-  const { PARAMS, coerce } = await import('../engine/params.js');
+  const { cameraBasis } = await import('./lib.mjs');
+  const { PARAMS, coerce } = await import('./lib.mjs');
   const defs = Object.fromEntries(PARAMS.map(p => [p.id, p.def]));
   const dir = new URL('../presets/batjorge/', import.meta.url);
   for (const name of ['voyager', 'cuentos', 'una-de-setas', 'amrand']) {
