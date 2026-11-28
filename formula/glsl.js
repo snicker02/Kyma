@@ -61,6 +61,10 @@ export const FOLD_GLSL = [
   `vec2 dq = vec2(z.x - z.y, z.x + z.y) * 0.70710678;
     vec3 dw = boxFold(vec3(dq, z.z));
     z = vec3((dw.x + dw.y) * 0.70710678, (dw.y - dw.x) * 0.70710678, dw.z);`,
+  // 11 Kali Type 2 (X/Y): FoldType 2 of Kali's original amazingsurface.frag
+  `z.xy = u_fold.xy - abs(abs(z.xy) - u_fold.xy);`,
+  // 12 Kali Type 3 (X/Y): FoldType 3 of Kali's original amazingsurface.frag
+  `z.xy = abs(z.xy + u_fold.xy);`,
 ];
 
 // Formula uniforms (inserted after Organon's render-mode uniforms).
@@ -72,6 +76,8 @@ uniform int   u_axisOrder;
 uniform float u_tgladWeight;
 uniform float u_cMult;
 uniform bool  u_noC;
+uniform vec3  u_preTrans;     // Classic: added after the fold, before the sphere fold (Kali's PreTranslation)
+uniform bool  u_kaliDE;       // Classic: Kali's Mandelbox-style DE instead of |z|/2dr
 // Wave Warp (Kyma): a per-iteration sine transform for every formula.
 uniform int   u_waveType;      // 0 off, 1 ripple, 2 shear, 3 fold, 4 twist, 5 gyroid, 6 interference
 uniform float u_waveAmp;
@@ -436,7 +442,9 @@ float mapLocal(vec3 p, out float trap) {
   #else
     z = foldA(z);
   #endif
+    z += u_preTrans;
     float rr = u_cylinder ? dot(z.xy, z.xy) : dot(z, z);
+    expSmoothStep(rr); // 'Exp smoothing' colour (Organon; no-op unless selected)
     g_sphCol += g_colOn * (rr < minR2 ? 1.0 : (rr < 1.0 ? 0.5 : 0.0));
     g_sphAmt += g_colOn * max(rr - minR2, 0.0) * 0.01;
     float dividend = (rr < minR2) ? minR2 : min(rr, 1.0);
@@ -734,6 +742,9 @@ float mapLocal(vec3 p, out float trap) {
     if (u_invEnabled && u_invMode == 1) sphereInvert(z, dr);
 
     trap = min(trap, dot(z, z));
+#if SURF_VARIANT != 0
+    expSmoothStep(dot(z, z));
+#endif
 #ifdef HAS_MAT
     if (g_texProbe && !g_texDone && i >= u_texFracStart) {
       vec3 zz = abs(z - p);
@@ -752,12 +763,20 @@ float mapLocal(vec3 p, out float trap) {
   if (u_colorSource == 3) {
     // ×2.5 cancels the shader's trap·0.4, so one weighted unit = one index unit.
     trap = (g_boxAmt * u_foldColW + g_sphAmt * u_sphColW) * 2.5;
-  } else if (u_colorSource != 0) {
+  } else if (u_colorSource == 1 || u_colorSource == 2) {
     float folds = g_boxCol * u_foldColW + g_sphCol * u_sphColW;
     trap = u_colorSource == 1 ? folds * 2.5 : trap + folds * 2.5;
   }
 #if SURF_VARIANT == 10
   if (u_vMinDE) return 0.5 * minDE;
+#endif
+#if SURF_VARIANT == 0
+  // Kali's estimate (amazingsurface.frag): (|z| − |S − 1|)/w − |S|^(1−N).
+  // The last term assumes |S| > 1; it is dropped otherwise.
+  if (u_kaliDE) {
+    float as = abs(u_scale);
+    return (length(z) - abs(u_scale - 1.0)) / abs(dr) - (as > 1.0 ? pow(as, 1.0 - float(u_iterations)) : 0.0);
+  }
 #endif
   return 0.5 * length(z) / abs(dr);
 }
