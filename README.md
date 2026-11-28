@@ -627,6 +627,10 @@ python3 -m http.server 8000 & node tests/browser.mjs
 - dock layout geometry;
 - the UI wiring and the downloads.
 
+## License
+
+MIT — see [LICENSE](LICENSE).
+
 ---
 
 Created with help from Claude AI
@@ -640,7 +644,3 @@ The **⇄ Shelf** button opens the image shelf shared by all apps on [snicker02.
 - **Load here** brings a shelf image into this app as the environment (reflections and background), the same as Load Image. Opening the app with `?shelf=<id>` does the same on start, which is how Send to works.
 
 The shelf code lives in [`snicker02.github.io/shared/bridge.js`](https://github.com/snicker02/snicker02.github.io/blob/main/shared/bridge.js). If it can't load (for example when you're offline), the app works as before and the button is hidden.
-
-## License
-
-MIT — see [LICENSE](LICENSE).
