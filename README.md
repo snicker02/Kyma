@@ -627,6 +627,10 @@ python3 -m http.server 8000 & node tests/browser.mjs
 - dock layout geometry;
 - the UI wiring and the downloads.
 
+## License
+
+MIT — see [LICENSE](LICENSE).
+
 ---
 
 Created with help from Claude AI
