@@ -284,6 +284,8 @@ export function localDE(v, scaleOverride) {
         return [sb(z[0], fx), sb(z[1], fy), sb(z[2], fz)];
       }
       case 9: return [abs(z[0]) - fx, abs(z[1]) - fy, abs(z[2]) - fz];
+      case 11: return [fx - abs(abs(z[0]) - fx), fy - abs(abs(z[1]) - fy), z[2]];
+      case 12: return [abs(z[0] + fx), abs(z[1] + fy), z[2]];
       default: {
         const c = Math.SQRT1_2;
         const w = box([(z[0] - z[1]) * c, (z[0] + z[1]) * c, z[2]]);
@@ -355,6 +357,7 @@ export function localDE(v, scaleOverride) {
         actualScale = scale + v.scaleVary * (abs(actualScale) - 1);
         const useB = v.foldType2 > 0 && v.hybridPeriod > 0 && (v.foldType2 - 1) !== v.foldType && i % v.hybridPeriod === v.hybridPeriod - 1;
         z = applyFold(z, useB ? v.foldType2 - 1 : v.foldType);
+        z = add(z, [v.preTransX || 0, v.preTransY || 0, v.preTransZ || 0]);
         const rr = v.cylinder ? z[0] * z[0] + z[1] * z[1] : dot3(z);
         const dividend = rr < minR2 ? minR2 : Math.min(rr, 1);
         const m = actualScale / dividend;
@@ -528,6 +531,10 @@ export function localDE(v, scaleOverride) {
       if (variant !== 0 && dot3(z) > 10000) break; // Mandelbulber bailout 100
     }
     if (variant === 10 && v.vMinDE) return { d: 0.5 * minDE, trap };
+    if (variant === 0 && (v.classicDE | 0) === 1) { // Kali's estimate (mirrors glsl.js)
+      const as = abs(scale);
+      return { d: (Math.hypot(z[0], z[1], z[2]) - abs(scale - 1)) / abs(dr) - (as > 1 ? Math.pow(as, 1 - iters) : 0), trap };
+    }
     return { d: 0.5 * Math.hypot(z[0], z[1], z[2]) / abs(dr), trap };
   };
   map.applyFold = applyFold; // exposed for tests

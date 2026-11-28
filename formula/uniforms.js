@@ -69,6 +69,8 @@ export function uniforms(v, scaleOverride) {
     u_tgladWeight: v.tgladWeight,
     u_cMult: v.cMult,
     u_juliaMode: v.juliaMode,
+    u_preTrans: [v.preTransX || 0, v.preTransY || 0, v.preTransZ || 0],
+    u_kaliDE: (v.surfVariant | 0) === 0 && (v.classicDE | 0) === 1,
     u_cylinder: v.cylinder,
     u_juliaC: [v.juliaCX, v.juliaCY, v.juliaCZ],
     u_fold: [v.foldX, v.foldY, v.foldZ],

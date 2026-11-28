@@ -47,6 +47,8 @@ export function setupUI({ state, panel, el, toast, pushHistory, pushSnapshot }) 
     'Smooth box fold, 2f·tanh(z/f) − z: the box fold with its creases rounded off. Soft and organic, with no hard seams.',
     'Abs Shift: the Kali kaleidoscopic IFS step, abs(z) − limit. Crystalline and lacy, and very sensitive to the fold limits.',
     'Box fold in a frame rotated 45° about Z. Diamond and lozenge lattices.',
+    'FoldType 2 of Kali\'s original Amazing Surface (Fragmentarium): f − ||z| − f| on X and Y only. (Kyma\'s Type 2 folds all three axes.) Type 1 there is Surf XY.',
+    'FoldType 3 of Kali\'s original Amazing Surface: |z + f| on X and Y only. Folds everything to one side, so sheets stack into shelves and terraces.',
   ];
   const foldDesc = el('div', 'fold-desc');
   panel.controls.get('foldType').wrap.after(foldDesc);

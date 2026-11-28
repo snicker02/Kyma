@@ -72,6 +72,8 @@ void main() { float tr; float d = map(u_p, tr); gl_FragColor = pack(clamp(d / 16
     ['mb inversion mod1', { ...VARIANT_DEFAULTS[2], surfVariant: 2, vSInvOn: true, vSInvOffY: -0.4, vSInvG: 0.8, vSInvA: 2.1, vSInvStart: 1, vSInvStop: 3 }],
     ['mb inversion mod4', { ...VARIANT_DEFAULTS[5], surfVariant: 5, vSInvOn: true, vSInvOffX: 0.5, vSInvG: 1.2, vSInvAddZ: 0.3, vSInvA: 0.9 }],
     ['mb inversion klein', { ...VARIANT_DEFAULTS[8], surfVariant: 8, vSInvOn: true, vSInvOffZ: 0.6, vSInvG: 1.1, vSInvA: 1.5, vSInvStop: 2 }],
+    ['kali type 2 pretrans', { foldType: 11, foldX: 0.8, foldY: 1.2, preTransX: 0.2, preTransY: -0.1, preTransZ: 0.15, scale: 1.7, juliaMode: false, classicDE: 1 }],
+    ['kali type 3 pretrans', { foldType: 12, foldX: 1.1, foldY: 0.7, preTransX: -0.15, preTransZ: 0.1, scale: 1.6, juliaMode: true, juliaCX: 0.5, juliaCY: 0.2, juliaCZ: -0.75 }],
     ['rep grid', { repMode: 1, repCountX: 2, repCountY: 1, repCountZ: 2, repSpaceX: 4, repSpaceY: 3, repSpaceZ: 5 }],
     ['rep grid varied ifs', { ...BIOMES.ifs_ring.v, repMode: 1, repCountX: 1, repCountY: 1, repCountZ: 1, repSpaceX: 30, repSpaceY: 30, repSpaceZ: 30, repRotVar: 60, repScaleVar: 0.3, repColVar: 1, repSeed: 3 }],
     ['rep ring', { ...BIOMES.kyma_ell.v, repMode: 2, repRingN: 7, repRingR: 6, repRingAxis: 1 }],
@@ -502,6 +504,42 @@ await page.screenshot({ path: `${OUT}/ui-full.png`, timeout: 600000 });
   await page.keyboard.press('Escape');
   await page.waitForFunction(() => !window.__surf.mutGrid.isOpen && window.__surf.renderer.live.samples >= 1, null, { timeout: 600000 });
   ok(true, 'mutation grid: Esc closes and the viewer resumes');
+}
+
+// ── Kali presets + Exp smoothing colour ──
+{
+  const shot = async (key, o = {}) => {
+    await page.evaluate(async ([key, o]) => {
+      const { BIOMES } = await import('/formula/presets.js');
+      const s = window.__surf; s.state.resetAll();
+      s.state.setMany({ ...BIOMES[key].v, maxSamples: 1, renderScale: 0.25, ...o });
+      s.renderer.resetLive();
+    }, [key, o]);
+    await page.waitForFunction(() => window.__surf.renderer.live.samples >= 1 && !window.__surf.renderer.isCompiling(), null, { timeout: 900000 });
+    return page.evaluate(() => {
+      const c = document.getElementById('view'), g = c.getContext('webgl'), w = c.width, h = c.height, buf = new Uint8Array(w * h * 4);
+      g.readPixels(0, 0, w, h, g.RGBA, g.UNSIGNED_BYTE, buf);
+      let sum = 0, hue = 0; const bg = [buf[0], buf[1], buf[2]]; let fg = 0;
+      for (let i = 0; i < buf.length; i += 4) { if (Math.abs(buf[i] - bg[0]) + Math.abs(buf[i + 1] - bg[1]) + Math.abs(buf[i + 2] - bg[2]) > 24) fg++; sum += buf[i] + buf[i + 1] + buf[i + 2]; hue += buf[i] - buf[i + 2]; }
+      return { fg: fg / (w * h), mean: sum / (w * h * 3), hue: hue / (w * h), buf: Array.from(buf.filter((_, i) => i % 97 === 0)), keys: [...window.__surf.renderer.programs.keys()] };
+    });
+  };
+  const fgs = [];
+  for (let i = 0; i < 8; i++) { const r = await shot('kali_' + i); fgs.push(r.fg); if (i === 0 || i === 1) await page.screenshot({ path: `${OUT}/kali_${i}.png` }); }
+  ok(fgs.every(f => f > 0.05), `all 8 Kali presets show the fractal (${fgs.map(f => (f * 100).toFixed(0) + '%').join(' ')})`);
+  const ES = await page.evaluate(async () => { const { PARAM_BY_ID } = await import('/core/engine/params.js'); return PARAM_BY_ID.get('colorSource').options.length - 1; });
+  const trap = await shot('kali_0', { colorSource: 0 });
+  const sm = await shot('kali_0', { colorSource: ES, colorIters: 8 });
+  await page.screenshot({ path: `${OUT}/kali_0_expsmooth.png` });
+  let diff = 0; for (let i = 0; i < trap.buf.length; i++) diff += Math.abs(trap.buf[i] - sm.buf[i]);
+  diff /= trap.buf.length;
+  ok(sm.keys.some(k => /\|es$/.test(k)) && diff > 4, `Exp smoothing compiles its own program and recolours the scene (mean |Δ| ${diff.toFixed(1)}/255)`);
+  const sm2 = await shot('kali_0', { colorSource: ES, colorIters: 8, expSmoothScale: 1.2 });
+  let d2 = 0; for (let i = 0; i < sm.buf.length; i++) d2 += Math.abs(sm.buf[i] - sm2.buf[i]);
+  ok(d2 / sm.buf.length > 2, `Smoothing Colour × changes the bands (mean |Δ| ${(d2 / sm.buf.length).toFixed(1)}/255)`);
+  const smRep = await shot('kali_2', { colorSource: ES, repMode: 1, repCountX: 1, repCountY: 0, repCountZ: 1 });
+  ok(smRep.keys.some(k => /\|rep\|es$|\|rep.*\|es/.test(k)) && smRep.fg > 0.05, 'Exp smoothing with repetition renders');
+  await page.evaluate(() => window.__surf.state.resetAll());
 }
 
 // ── Click tools, repetition, deep zoom ──

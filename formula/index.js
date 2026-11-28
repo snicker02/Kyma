@@ -11,7 +11,7 @@ import { BIOMES, migrateLegacy, rebirthCandidate, REBIRTH_TARGET } from './prese
 import { importFract } from './mbimport.js';
 import { setupUI } from './ui.js';
 
-export const VERSION = '2.22.0';
+export const VERSION = '2.23.0';
 
 const formula = {
   id: 'kyma',
@@ -40,12 +40,13 @@ const formula = {
     ['Mandelbulber Amazing Surf', k => !BIOMES[k].group && !!BIOMES[k].v.surfVariant],
     ['Amazing IFS', k => BIOMES[k].group === 'ifs'],
     ['Kyma Originals (new formulas)', k => BIOMES[k].group === 'kyma'],
+    ["Kali's Amazing Surface (Fragmentarium)", k => BIOMES[k].group === 'kali'],
     ['Kyma Waves', k => BIOMES[k].group === 'wave'],
     ["Brad's scenes", k => BIOMES[k].group === 'brad'],
     ['batjorge.com · Mandelbulber scenes', k => BIOMES[k].group === 'batjorge'],
   ],
   // Also reset to defaults when a preset is applied (unless it sets them).
-  presetReset: /^(sphColW|vSInv\w+|wave\w+|noC|maxStep)$/,
+  presetReset: /^(sphColW|vSInv\w+|wave\w+|noC|maxStep|preTrans\w|classicDE)$/,
   migrateLegacy,
   rebirth: { candidate: rebirthCandidate, target: REBIRTH_TARGET },
 

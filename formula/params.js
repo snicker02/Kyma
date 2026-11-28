@@ -23,7 +23,7 @@ const V_STACK = [2, 3, 4, 6];         // fold-stack variants
 const V_ALL_BUT_KLEIN = [0, 1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15];
 const V_KYMA = [11, 12, 13, 14, 15]; // Kyma's own surf variants // variants that take c (IFS only with Add c)
 
-export const FOLD_NAMES = ['Type 1 (Box)', 'Type 2', 'Type 3', 'Surf XY (Mandelbulber)', 'Tetrahedral + Box', 'Octahedral + Box', 'Icosahedral + Box', 'Polar Kaleidoscope', 'Smooth Box (tanh)', 'Abs Shift (Kali)', 'Diagonal Box'];
+export const FOLD_NAMES = ['Type 1 (Box)', 'Type 2', 'Type 3', 'Surf XY (Mandelbulber)', 'Tetrahedral + Box', 'Octahedral + Box', 'Icosahedral + Box', 'Polar Kaleidoscope', 'Smooth Box (tanh)', 'Abs Shift (Kali)', 'Diagonal Box', 'Kali Type 2 (XY)', 'Kali Type 3 (XY)'];
 
 export const FORMULA_PARAMS = [
   // ── Surf variant (Mandelbulber surf family, reimplemented) ─────────────────
@@ -119,12 +119,16 @@ export const FORMULA_PARAMS = [
   { id: 'hybridPeriod', label: 'B Every N', type: 'range', group: 'ftype', min: 1, max: 8, step: 1, def: 2, int: true, hardMin: 1, hardMax: 40, row: 'hybrid', gate: 'surfVariant', gateEq: 0 },
   { id: 'polarN', label: 'Polar Sectors', type: 'range', group: 'ftype', min: 2, max: 16, step: 1, def: 6, int: true, hardMin: 1, hardMax: 64, gate: 'surfVariant', gateEq: [0, 9, 10] },
   { id: 'axisOrder', label: 'Axis Swap', type: 'select', group: 'ftype', options: ['XYZ', 'XZY', 'YXZ', 'YZX', 'ZXY', 'ZYX'], def: 0, row: 'axis' },
+  { id: 'classicDE', label: 'Distance Estimate', type: 'select', group: 'ftype', options: ['Kyma  |z| / 2dr', 'Kali  (|z| − |S−1|)/dr − |S|^(1−N)'], def: 0, gate: 'surfVariant', gateEq: 0 },
   { id: 'tgladWeight', label: 'Fold Weight', type: 'range', group: 'ftype', min: 0, max: 2, step: 0.01, def: 0, mutate: true, row: 'axis', gate: 'surfVariant', gateEq: 0 },
 
   // ── Folding & space ─────────────────────────────────────────────────────
   { id: 'foldX', label: 'FX', type: 'range', group: 'fold', min: 0, max: 4, step: 0.01, def: 1, row: 'fold', section: 'Fold Limits', mutate: true },
   { id: 'foldY', label: 'FY', type: 'range', group: 'fold', min: 0, max: 4, step: 0.01, def: 1, row: 'fold', mutate: true },
   { id: 'foldZ', label: 'FZ', type: 'range', group: 'fold', min: 0, max: 4, step: 0.01, def: 0, row: 'fold', mutate: true },
+  { id: 'preTransX', label: 'TX', type: 'range', group: 'fold', min: -2, max: 2, step: 0.01, def: 0, hardMin: -5, hardMax: 5, row: 'ptr', section: 'Pre-Translation (after the fold, Classic)', gate: 'surfVariant', gateEq: 0, mutate: true },
+  { id: 'preTransY', label: 'TY', type: 'range', group: 'fold', min: -2, max: 2, step: 0.01, def: 0, hardMin: -5, hardMax: 5, row: 'ptr', gate: 'surfVariant', gateEq: 0, mutate: true },
+  { id: 'preTransZ', label: 'TZ', type: 'range', group: 'fold', min: -2, max: 2, step: 0.01, def: 0, hardMin: -5, hardMax: 5, row: 'ptr', gate: 'surfVariant', gateEq: 0, mutate: true },
   { id: 'juliaMode', label: 'Julia Mode', type: 'bool', group: 'fold', def: true, gate: 'surfVariant', gateEq: V_ALL_BUT_KLEIN },
   { id: 'juliaCX', label: 'JX', type: 'range', group: 'fold', min: -2, max: 2, step: 0.01, def: 0, row: 'julia', section: 'Julia Seed (C)', gate: 'juliaMode', mutate: true },
   { id: 'juliaCY', label: 'JY', type: 'range', group: 'fold', min: -2, max: 2, step: 0.01, def: 0, row: 'julia', gate: 'juliaMode', mutate: true },
@@ -184,6 +188,7 @@ defineParams({
   groups: GROUPS_LEFT,
   params: FORMULA_PARAMS,
   scene: {
+    expSmooth: true, // Organon 1.1: adds the 'Exp smoothing' colour source
     // Colour sources: Kyma adds the continuous fold amounts (Mandelbulber's
     // aux.color for the surf family) and a separate sphere-fold weight.
     override: {

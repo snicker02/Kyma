@@ -1,4 +1,4 @@
-# Kyma v2.22.0
+# Kyma v2.23.0
 
 **Kyma** (κῦμα, Greek for "wave") is a progressive WebGL1 raymarcher for Kali's **Amazing Surf** fractal family. It includes all nine of Mandelbulber's surf formulas, path tracing, volumetric glow and environment lighting. It has no dependencies and no build step. It was formerly *Amazing Surf*; old project files, discovery strings (`SURF2:`) and saved panel layouts still load.
 
@@ -78,6 +78,10 @@ Things to know:
 | 8 | Smooth Box (tanh) | `2f·tanh(z/f) − z`: box fold with rounded creases |
 | 9 | Abs Shift (Kali) | `abs(z) − limit`: kaleidoscopic IFS step |
 | 10 | Diagonal Box | Box fold in a frame rotated 45° about Z |
+| 11 | Kali Type 2 (XY) | FoldType 2 of Kali's original Amazing Surface: `f − ‖z| − f|` on X/Y only |
+| 12 | Kali Type 3 (XY) | FoldType 3 of Kali's original: `|z + f|` on X/Y only; shelves and terraces |
+
+Kali's FoldType 1 is **Surf XY** (3). Kyma's Type 2 and Type 3 (1, 2) are different, 3D folds from earlier versions; they are unchanged.
 
 **Hybrid Fold B** swaps in a second fold on every Nth iteration, the way Mandelbulber hybrids do.
 
@@ -309,6 +313,15 @@ controls and render exactly as before (checked against v2.17.0's code).
 Only programs for these formulas contain their code. Variants 0–10 compile
 to exactly the same shaders as before.
 
+## Kali's original Amazing Surface (Fragmentarium)
+
+Kali's `amazingsurface.frag` (Fragmentarium examples, *Kali's Creations*, in [3Dickulus/FragM](https://github.com/3Dickulus/FragM)) is the formula Kyma's Classic engine grew from. v2.23.0 adds the parts Classic was missing, so his scenes load exactly:
+
+- **Pre-Translation (TX, TY, TZ)** (Folding & Space, Classic only): an offset added after the fold and before the sphere fold.
+- **Kali Type 2 (XY)** and **Kali Type 3 (XY)** fold types (above).
+- **Distance Estimate** (Fold Type, Classic only): *Kyma* `|z| / 2dr` (default, unchanged), or *Kali* `(|z| − |S−1|)/dr − |S|^(1−N)`, the Mandelbox-style estimate from his file. Kali's is about twice as large, so use it with a Step Factor near 0.5. The `|S|^(1−N)` term assumes |Scale| > 1 and is dropped otherwise.
+- **Kali's Amazing Surface (Fragmentarium)** preset group: all 8 presets from his file, converted exactly (fold type, fold values, Pre-Translation, Scale, MinRad², Julia, rotation, iterations, his distance estimate with his FudgeFactor as Step Factor, camera with FOV and up vector, background colour). `tests/run.mjs` checks Kyma's distance estimate against a direct port of Kali's code; they agree to about 1e-12. Colours are Kyma's own, because Fragmentarium's X/Y/Z/R orbit-trap colours don't map onto a gradient.
+
 ## Brad's scenes
 
 Saved projects added as presets (**Brad's scenes** in the dropdown). A preset
@@ -513,6 +526,7 @@ The surface colour comes from a gradient indexed by the orbit trap. **Gradient**
 - *Fold count (stripes)*: each box-fold that actually reflects a component adds **Box-Fold Color**, and each sphere-fold that rescales adds **Sphere-Fold Color** (half for the middle zone). This is the idea behind Mandelbulber's extended "aux colour". The count is constant over each region, so a banded gradient gives crisp stripes and segments. **Color Iterations** counts only the first N iterations: 2–5 gives broad regions, and more gives finer, busier detail.
 - *Trap + folds*: both added together.
 - *Fold amounts (continuous)*: how far each fold reflected, not just whether it did (see Amazing IFS). This gives smooth stripes.
+- *Exp smoothing* (v2.23.0, from the Organon engine): sums `exp(−1/|r²ₙ − r²ₙ₋₁|)` over the first **Color Iterations** iterations, with r² the value the sphere fold tests (Kali's `KboxExpSmooth.frag`). Iterations where r² barely changes add almost 0 and big jumps add almost 1, so the colour follows how the sheet curls, in soft continuous bands. **Smoothing Colour ×** sets how fast it runs through the gradient. It compiles in only while selected.
 
 Multi-stop gradients are blended in OKLab, so transitions keep even brightness instead of going muddy midway. Controls:
 

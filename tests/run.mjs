@@ -195,6 +195,8 @@ section('fold types');
     for (let variant = 0; variant < 16; variant++) for (const mode of [0, 1, 2]) for (const texLod of [true, false]) combos.push([0, -1, mode, variant, undefined, true, texLod]);
     // Repetition + Deep Zoom (+ materials + extra lights) builds.
     for (let variant = 0; variant < 16; variant++) for (const mode of [0, 1, 2]) combos.push([0, -1, mode, variant, undefined, variant % 2 === 0, mode !== 1, { rep: true, dz: true, xl: variant % 3 === 0 }]);
+    // Exp-smoothing colour (Organon HAS_EXPSM) on every variant, plain and with repetition.
+    for (let variant = 0; variant < 16; variant++) for (const mode of [0, 1, 2]) combos.push([variant === 0 ? 11 + (mode % 2) : 0, -1, mode, variant, undefined, false, mode === 0, { es: true, rep: mode === 2 }]);
     for (const [a, b, mode, variant = 0, stack, mat = false, lod, extra = {}] of combos) {
       writeFileSync('/tmp/surf-combo.frag', '#version 100\n' + fractalFrag(a, b, { mode, variant, stack, mat, texLod: lod ?? (a + b + variant) % 2 === 0, ...extra }));
       const r = spawnSync('glslangValidator', ['/tmp/surf-combo.frag']);
@@ -983,6 +985,72 @@ section('icosahedral fold');
   const m = makeDE({ ...defaults(), foldType: 6, juliaMode: true, juliaCX: 0, juliaCY: 0, juliaCZ: 0, alpha: 0, beta: 0, gamma: 0 });
   let w = 0; for (let i = 0; i < 200; i++) { const p = [r() * 3 - 1.5, r() * 3 - 1.5, r() * 3 - 1.5]; w = Math.max(w, Math.abs(m(p).d - m(rot(p)).d)); }
   ok(w < 1e-9, `icosahedral fold type: DE invariant under a 5-fold vertex rotation (max diff ${w.toExponential(1)})`);
+}
+
+section("Kali's Amazing Surface (Fragmentarium)");
+{
+  // Direct port of Kali's amazingsurface.frag DE (float64), the reference for
+  // the Kali presets, fold types 11/12, Pre-Translation and the Kali estimate.
+  const rod = (v, deg) => { const l = Math.hypot(...v); const [x, y, z] = v.map(c => c / l), a = deg * Math.PI / 180, c = Math.cos(a), s = Math.sin(a), t = 1 - c; return [c + t * x * x, t * x * y - s * z, t * x * z + s * y, t * x * y + s * z, c + t * y * y, t * y * z - s * x, t * x * z - s * y, t * y * z + s * x, c + t * z * z]; };
+  const kaliDE = (P, pos) => {
+    const S = P.Scale, F = P.FoldValues, T = P.PreTranslation, R = P.R;
+    let p = [...pos], w = 1;
+    const c = P.Julia ? [...P.JuliaValues, 1] : [...pos, 1];
+    for (let i = 0; i < P.Iterations; i++) {
+      for (const k of [0, 1]) {
+        if (P.FoldType === 1) p[k] = Math.abs(p[k] + F[k]) - Math.abs(p[k] - F[k]) - p[k];
+        if (P.FoldType === 2) p[k] = F[k] - Math.abs(Math.abs(p[k]) - F[k]);
+        if (P.FoldType === 3) p[k] = Math.abs(p[k] + F[k]);
+      }
+      p = p.map((x, k) => x + T[k]);
+      const r2 = p[0] * p[0] + p[1] * p[1] + p[2] * p[2], m = 1 / Math.min(Math.max(r2, P.MinRad2), 1);
+      p = p.map(x => x * S * m); w *= Math.abs(S) * m;
+      p = p.map((x, k) => x + c[k]); w += c[3];
+      p = [R[0] * p[0] + R[1] * p[1] + R[2] * p[2], R[3] * p[0] + R[4] * p[1] + R[5] * p[2], R[6] * p[0] + R[7] * p[1] + R[8] * p[2]];
+    }
+    return (Math.hypot(...p) - Math.abs(1 - S)) / w - Math.pow(Math.abs(S), 1 - P.Iterations);
+  };
+  // Kali's 8 presets, as numbers (FoldType, FoldValues, Julia, RotVector/Angle…).
+  const KALI = [
+    { Iterations: 20, MinRad2: 0.25, Scale: 1.7, FoldType: 1, PreTranslation: [0, 0, 0], FoldValues: [1, 1], Julia: true, JuliaValues: [0.5, 0.2, -0.75], RotVector: [0, 1, 0], RotAngle: -65.4552 },
+    { Iterations: 30, MinRad2: 0.23539, Scale: 1.89474, FoldType: 1, PreTranslation: [0, 0, 0], FoldValues: [0.6989, 2.69735], Julia: true, JuliaValues: [-1.7045, -3.75, -0.2273], RotVector: [1, 0, 1], RotAngle: 180 },
+  ];
+  let worst = 0;
+  KALI.forEach((P, i) => {
+    P.R = rod(P.RotVector, P.RotAngle);
+    const v = BIOMES['kali_' + i].v, de = makeDE(v);
+    for (let n = 0; n < 300; n++) {
+      const q = [v.targetX, v.targetY, v.targetZ].map(x => x + Math.sin(n * 1.7 + x * 3 + i) * v.dist);
+      const a = kaliDE(P, q), b = de.local(q).d;
+      if (Number.isFinite(a) && Math.abs(a) < 1e6) worst = Math.max(worst, Math.abs(a - b) / Math.max(1e-9, Math.abs(a)));
+    }
+  });
+  ok(worst < 1e-8, `Kali presets Default and 1 (180° turn, gimbal lock): Kyma DE = Kali's DE (rel err ${worst.toExponential(1)})`);
+  ok(Object.keys(BIOMES).filter(k => BIOMES[k].group === 'kali').length === 8, "all 8 of Kali's presets are in the menu");
+  // Fold types 11/12 and Pre-Translation against the port with no rotation, no Julia.
+  for (const [ft, kt] of [[3, 1], [11, 2], [12, 3]]) {
+    const P = { Iterations: 9, MinRad2: 0.3, Scale: 1.6, FoldType: kt, PreTranslation: [0.13, -0.21, 0.07], FoldValues: [0.9, 1.3], Julia: false, JuliaValues: [0, 0, 0], R: [1, 0, 0, 0, 1, 0, 0, 0, 1] };
+    const de = makeDE({ ...defaults(), surfVariant: 0, foldType: ft, foldX: 0.9, foldY: 1.3, preTransX: 0.13, preTransY: -0.21, preTransZ: 0.07, scale: 1.6, minR: Math.sqrt(0.3), iterations: 9, juliaMode: false, alpha: 0, beta: 0, gamma: 0, classicDE: 1 });
+    let w = 0;
+    for (let n = 0; n < 300; n++) { const q = [Math.sin(n * 1.3) * 2, Math.cos(n * 0.7) * 2, Math.sin(n * 2.9) * 2]; const a = kaliDE(P, q); if (Math.abs(a) < 1e6) w = Math.max(w, Math.abs(a - de.local(q).d) / Math.max(1e-9, Math.abs(a))); }
+    ok(w < 1e-9, `Kali FoldType ${kt} = Kyma fold ${ft} (${['', '', '', 'Surf XY', '', '', '', '', '', '', '', 'Kali Type 2', 'Kali Type 3'][ft]}) with Pre-Translation (rel err ${w.toExponential(1)})`);
+  }
+  // Kyma's own estimate is unchanged by the new option's default.
+  const base = { ...defaults(), surfVariant: 0, foldType: 3 };
+  const q = [0.3, -0.7, 0.4];
+  ok(Math.abs(makeDE(base).local(q).d - makeDE({ ...base, classicDE: 0 }).local(q).d) === 0, "Distance Estimate defaults to Kyma's |z|/2dr");
+  // Pre-Translation is wired to the shader and only the Classic engine reads it.
+  const su = sceneUniforms({ ...defaults(), preTransX: 0.5, classicDE: 1 });
+  ok(su.u_preTrans[0] === 0.5 && su.u_kaliDE === true && sceneUniforms({ ...defaults(), surfVariant: 1, classicDE: 1 }).u_kaliDE === false, 'u_preTrans / u_kaliDE uniforms (Kali estimate only on Classic)');
+  const src = FRACTAL_FRAG;
+  ok(/z \+= u_preTrans;/.test(src) && /expSmoothStep\(rr\)/.test(src) && /u_kaliDE/.test(src), 'Classic loop: Pre-Translation, exp smoothing at the sphere-fold r², Kali estimate');
+  // Exp smoothing colour: last Color Source, compiled in only while selected.
+  const cs = PARAM_BY_ID.get('colorSource');
+  ok(cs.options[cs.options.length - 1] === 'Exp smoothing' && cs.options[3] === 'Fold amounts (continuous)', `colour sources keep their indices; Exp smoothing is index ${cs.options.length - 1}`);
+  const { specOf, specKey } = await import('./lib.mjs');
+  const k = specKey(specOf(sceneUniforms({ ...defaults(), colorSource: cs.options.length - 1 })));
+  ok(/\|es$/.test(k) && !/\|es/.test(specKey(specOf(sceneUniforms({ ...defaults(), colorSource: 3 })))), `spec key ${k}`);
+  ok(/#define HAS_EXPSM/.test(fractalFrag(0, -1, { es: true })) && /expSmoothStep\(dot\(z, z\)\)/.test(fractalFrag(0, -1, { variant: 5, es: true })), 'every variant feeds exp smoothing');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
